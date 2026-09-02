@@ -26,9 +26,10 @@
 //     present and may need revisiting against a page with an actual rating.
 
 import * as cheerio from "cheerio";
+import type { AnyNode } from "domhandler";
 import type { Accord, Fragrance } from "@/lib/schemas";
 
-function textOf(el: cheerio.Cheerio<any>): string | null {
+function textOf(el: cheerio.Cheerio<AnyNode>): string | null {
   const t = el.first().text().trim();
   return t.length > 0 ? t : null;
 }

@@ -19,6 +19,7 @@ interface AlgoliaCredentials {
 }
 
 let cached: AlgoliaCredentials | null = null;
+let inFlightExtraction: Promise<AlgoliaCredentials> | null = null;
 
 function decodeValidUntil(apiKey: string): number {
   try {
@@ -74,7 +75,15 @@ async function extractCredentials(): Promise<AlgoliaCredentials> {
 async function getCredentials(): Promise<AlgoliaCredentials> {
   const now = Date.now() / 1000;
   if (cached && cached.validUntil > now + 60) return cached;
-  cached = await extractCredentials();
+
+  // Concurrent callers (e.g. two near-simultaneous searches on a cold cache)
+  // should share one extraction, not each launch their own browser.
+  if (!inFlightExtraction) {
+    inFlightExtraction = extractCredentials().finally(() => {
+      inFlightExtraction = null;
+    });
+  }
+  cached = await inFlightExtraction;
   return cached;
 }
 
