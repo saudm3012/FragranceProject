@@ -74,6 +74,7 @@ export default function FindFragrancePage() {
       <nav className="nav-links">
         <Link href="/">Home</Link>
         <Link href="/collection">Collection</Link>
+        <Link href="/db">Browse Database</Link>
       </nav>
       <h1>Find Fragrance</h1>
 

@@ -11,6 +11,9 @@ export default function Home() {
         <Link href="/collection" className="button">
           Collection
         </Link>
+        <Link href="/db" className="button">
+          Browse Database
+        </Link>
       </div>
     </div>
   );

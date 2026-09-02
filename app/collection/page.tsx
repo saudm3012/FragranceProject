@@ -67,6 +67,7 @@ export default function CollectionPage() {
       <nav className="nav-links">
         <Link href="/">Home</Link>
         <Link href="/find">Find Fragrance</Link>
+        <Link href="/db">Browse Database</Link>
       </nav>
       <h1>Collection</h1>
 

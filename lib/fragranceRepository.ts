@@ -42,6 +42,12 @@ function rowToFragrance(row: FragranceRow): Fragrance {
   };
 }
 
+export async function listAll(): Promise<Fragrance[]> {
+  const db = getDb();
+  const result = await db.execute("SELECT * FROM fragrances ORDER BY scraped_at DESC");
+  return result.rows.map((r) => rowToFragrance(r as unknown as FragranceRow));
+}
+
 export async function getByUrl(url: string): Promise<Fragrance | null> {
   const db = getDb();
   const result = await db.execute({ sql: "SELECT * FROM fragrances WHERE url = ?", args: [url] });
