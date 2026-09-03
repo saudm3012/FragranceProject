@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import type { Candidate, Fragrance } from "@/lib/schemas";
+import { addToCollection, getUsername, USERNAME_CHANGED_EVENT } from "@/lib/client/localCollection";
 
-type Status = "idle" | "searching" | "loading-detail" | "adding";
+type Status = "idle" | "searching" | "loading-detail";
 
 export default function FindFragrancePage() {
   const [query, setQuery] = useState("");
@@ -13,6 +14,14 @@ export default function FindFragrancePage() {
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
   const [added, setAdded] = useState(false);
+  const [username, setUsernameState] = useState<string | null>(null);
+
+  useEffect(() => {
+    const load = () => setUsernameState(getUsername());
+    load();
+    window.addEventListener(USERNAME_CHANGED_EVENT, load);
+    return () => window.removeEventListener(USERNAME_CHANGED_EVENT, load);
+  }, []);
 
   async function handleSearch(e: React.FormEvent) {
     e.preventDefault();
@@ -50,23 +59,10 @@ export default function FindFragrancePage() {
     }
   }
 
-  async function handleAddToCollection() {
-    if (!fragrance?.id) return;
-    setStatus("adding");
-    setError(null);
-    try {
-      const res = await fetch("/api/collection", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fragrance_id: fragrance.id }),
-      });
-      if (!res.ok) throw new Error(`Add to collection failed (${res.status})`);
-      setAdded(true);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setStatus("idle");
-    }
+  function handleAddToCollection() {
+    if (!fragrance?.id || !username) return;
+    addToCollection(username, fragrance.id);
+    setAdded(true);
   }
 
   return (
@@ -111,7 +107,9 @@ export default function FindFragrancePage() {
         </div>
       )}
 
-      {fragrance && <FragranceDetail fragrance={fragrance} added={added} onAdd={handleAddToCollection} adding={status === "adding"} />}
+      {fragrance && (
+        <FragranceDetail fragrance={fragrance} added={added} onAdd={handleAddToCollection} hasUsername={!!username} />
+      )}
     </div>
   );
 }
@@ -120,12 +118,12 @@ function FragranceDetail({
   fragrance,
   added,
   onAdd,
-  adding,
+  hasUsername,
 }: {
   fragrance: Fragrance;
   added: boolean;
   onAdd: () => void;
-  adding: boolean;
+  hasUsername: boolean;
 }) {
   return (
     <div className="card">
@@ -176,9 +174,10 @@ function FragranceDetail({
       {fragrance.description && <p className="muted">{fragrance.description}</p>}
 
       <div style={{ marginTop: "1rem" }}>
-        <button className="button button-primary" onClick={onAdd} disabled={added || adding}>
-          {added ? "Added to Collection" : adding ? "Adding…" : "Add to Collection"}
+        <button className="button button-primary" onClick={onAdd} disabled={added || !hasUsername}>
+          {added ? "Added to Collection" : "Add to Collection"}
         </button>
+        {!hasUsername && <p className="muted">Set a username above to save fragrances.</p>}
       </div>
     </div>
   );

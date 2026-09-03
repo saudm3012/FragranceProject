@@ -1,30 +1,22 @@
 import { fetchMany } from "@/lib/scraping/fetch";
 import { parseFragrancePage } from "@/lib/scraping/parse";
 import * as fragranceRepository from "@/lib/fragranceRepository";
-import * as collectionRepository from "@/lib/collectionRepository";
-import type { CollectionEntry } from "@/lib/collectionRepository";
-
-export async function list(): Promise<CollectionEntry[]> {
-  return collectionRepository.list();
-}
-
-export async function add(fragranceId: number): Promise<void> {
-  await collectionRepository.add(fragranceId);
-}
-
-export async function remove(collectionId: number): Promise<void> {
-  await collectionRepository.remove(collectionId);
-}
 
 /**
- * Re-fetches + re-parses every fragrance currently in the collection, with
- * bounded concurrency, updating each cache row in place. A personal
+ * Re-fetches + re-parses the given fragrances (by id), with bounded
+ * concurrency, updating each cache row in place. Which fragrances make up
+ * "the collection" is tracked client-side (localStorage, see
+ * lib/client/localCollection.ts) rather than server-side, so the caller
+ * supplies the ids - this just refreshes whatever it's given. A personal
  * collection is small (tens to low hundreds), so this is a normal
  * user-triggered action, not a crawl.
  */
-export async function refresh(): Promise<{ refreshed: number; failed: number }> {
-  const urls = await collectionRepository.listUrls();
-  const results = await fetchMany(urls, 4);
+export async function refresh(fragranceIds: number[]): Promise<{ refreshed: number; failed: number }> {
+  const fragrances = await fragranceRepository.getByIds(fragranceIds);
+  const results = await fetchMany(
+    fragrances.map((f) => f.url),
+    4
+  );
 
   let refreshed = 0;
   let failed = 0;

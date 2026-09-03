@@ -50,6 +50,22 @@ a {
 
 /* Minimal shared styles - kept plain on purpose, see plan's Stage-2 note. */
 
+.username-bar {
+  padding: 0.6rem 1.25rem;
+  border-bottom: 1px solid rgba(128, 128, 128, 0.25);
+  font-size: 0.85rem;
+}
+
+.link-button {
+  background: none;
+  border: none;
+  padding: 0;
+  color: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+  font-size: inherit;
+}
+
 .container {
   max-width: 640px;
   width: 100%;

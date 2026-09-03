@@ -3,58 +3,74 @@
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import type { Fragrance } from "@/lib/schemas";
-
-interface CollectionEntry {
-  collectionId: number;
-  addedAt: string;
-  fragrance: Fragrance;
-}
+import {
+  getUsername,
+  getCollection,
+  removeFromCollection,
+  USERNAME_CHANGED_EVENT,
+} from "@/lib/client/localCollection";
 
 export default function CollectionPage() {
-  const [entries, setEntries] = useState<CollectionEntry[] | null>(null);
+  const [username, setUsernameState] = useState<string | null | undefined>(undefined);
+  const [fragrances, setFragrances] = useState<Fragrance[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [removingId, setRemovingId] = useState<number | null>(null);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (currentUsername: string) => {
     setError(null);
+    const entries = getCollection(currentUsername);
+    if (entries.length === 0) {
+      setFragrances([]);
+      return;
+    }
     try {
-      const res = await fetch("/api/collection");
+      const ids = entries.map((e) => e.fragranceId).join(",");
+      const res = await fetch(`/api/fragrances?ids=${ids}`);
       if (!res.ok) throw new Error(`Failed to load collection (${res.status})`);
-      setEntries(await res.json());
+      setFragrances(await res.json());
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
   }, []);
 
   useEffect(() => {
-    // Standard fetch-on-mount; load()'s setState happens after the await,
-    // not synchronously in the effect body.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    load();
-  }, [load]);
+    const onUsernameChange = () => setUsernameState(getUsername());
+    onUsernameChange();
+    window.addEventListener(USERNAME_CHANGED_EVENT, onUsernameChange);
+    return () => window.removeEventListener(USERNAME_CHANGED_EVENT, onUsernameChange);
+  }, []);
 
-  async function handleRemove(collectionId: number) {
-    setRemovingId(collectionId);
-    setError(null);
-    try {
-      const res = await fetch(`/api/collection/${collectionId}`, { method: "DELETE" });
-      if (!res.ok) throw new Error(`Remove failed (${res.status})`);
-      setEntries((prev) => prev?.filter((e) => e.collectionId !== collectionId) ?? null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setRemovingId(null);
+  useEffect(() => {
+    if (username) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- standard fetch-on-mount/username-change; setState happens after the await, not synchronously
+      load(username);
+    } else {
+      setFragrances(null);
     }
+  }, [username, load]);
+
+  function handleRemove(fragranceId: number) {
+    if (!username) return;
+    setRemovingId(fragranceId);
+    removeFromCollection(username, fragranceId);
+    setFragrances((prev) => prev?.filter((f) => f.id !== fragranceId) ?? null);
+    setRemovingId(null);
   }
 
   async function handleRefresh() {
+    if (!username || !fragrances) return;
     setRefreshing(true);
     setError(null);
     try {
-      const res = await fetch("/api/collection/refresh", { method: "POST" });
+      const ids = fragrances.map((f) => f.id).filter((id): id is number => id != null);
+      const res = await fetch("/api/collection/refresh", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fragrance_ids: ids }),
+      });
       if (!res.ok) throw new Error(`Refresh failed (${res.status})`);
-      await load();
+      await load(username);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -71,7 +87,12 @@ export default function CollectionPage() {
       </nav>
       <h1>Collection</h1>
 
-      {entries && entries.length > 0 && (
+      {username === undefined && null}
+      {username === null && (
+        <p className="muted">Set a username above to see your collection.</p>
+      )}
+
+      {username && fragrances && fragrances.length > 0 && (
         <div className="button-row" style={{ marginBottom: "1.5rem" }}>
           <button className="button" onClick={handleRefresh} disabled={refreshing}>
             {refreshing ? "Refreshing…" : "Refresh"}
@@ -80,25 +101,29 @@ export default function CollectionPage() {
       )}
 
       {error && <p className="error">{error}</p>}
-      {!entries && !error && <p className="spinner-text">Loading…</p>}
-      {entries && entries.length === 0 && (
+      {username && !fragrances && !error && <p className="spinner-text">Loading…</p>}
+      {username && fragrances && fragrances.length === 0 && (
         <p className="muted">
           Nothing saved yet. Go to <Link href="/find">Find Fragrance</Link> to add some.
         </p>
       )}
 
-      {entries?.map((entry) => (
-        <div key={entry.collectionId} className="card" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+      {fragrances?.map((f) => (
+        <div
+          key={f.id}
+          className="card"
+          style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}
+        >
           <div>
-            <strong>{entry.fragrance.name}</strong>
-            <div className="muted">{entry.fragrance.brand}</div>
+            <strong>{f.name}</strong>
+            <div className="muted">{f.brand}</div>
           </div>
           <button
             className="button"
-            onClick={() => handleRemove(entry.collectionId)}
-            disabled={removingId === entry.collectionId}
+            onClick={() => f.id != null && handleRemove(f.id)}
+            disabled={removingId === f.id}
           >
-            {removingId === entry.collectionId ? "Removing…" : "Remove"}
+            {removingId === f.id ? "Removing…" : "Remove"}
           </button>
         </div>
       ))}
