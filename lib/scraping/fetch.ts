@@ -7,7 +7,11 @@
 import { newContext } from "@/lib/scraping/browser";
 
 const NAV_TIMEOUT_MS = 30_000;
-const CHALLENGE_WAIT_MS = 5_000;
+// Upper bound on how long to wait for Cloudflare's challenge to clear -
+// polled (see below) rather than always slept in full, since the challenge
+// usually resolves well under this.
+const CHALLENGE_MAX_WAIT_MS = 8_000;
+const CHALLENGE_POLL_MS = 250;
 
 export interface FetchResult {
   url: string;
@@ -30,11 +34,18 @@ export async function fetchPage(url: string): Promise<FetchResult> {
       timeout: NAV_TIMEOUT_MS,
     });
 
-    // If Cloudflare's interactive challenge is showing, give it time to
-    // resolve and redirect to the real page before capturing HTML.
+    // If Cloudflare's interactive challenge is showing, poll for it to clear
+    // instead of always sleeping the full max wait - it usually resolves in
+    // well under a second once solved, so this saves real time on the
+    // common case while still bounding the worst case.
     const title = await page.title();
     if (title.toLowerCase().includes("just a moment")) {
-      await page.waitForTimeout(CHALLENGE_WAIT_MS);
+      await page
+        .waitForFunction(() => !document.title.toLowerCase().includes("just a moment"), undefined, {
+          timeout: CHALLENGE_MAX_WAIT_MS,
+          polling: CHALLENGE_POLL_MS,
+        })
+        .catch(() => {}); // proceed with whatever's rendered if it never clears in time
     }
 
     const html = await page.content();

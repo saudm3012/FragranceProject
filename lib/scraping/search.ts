@@ -3,23 +3,29 @@
 // the request Fragrantica's own frontend makes). That key is short-lived -
 // it's an Algolia "secured API key" with a `validUntil` timestamp baked into
 // it (observed ~3 weeks out from when this was written) - so it can't be
-// hardcoded. Instead: extract it once via a real page load (the only place
-// we need Playwright here), cache it in memory, and re-extract when it's
-// gone or Algolia rejects it. Actual search queries then go straight to
-// Algolia with plain fetch() - fast, and never touches Fragrantica's own
-// Cloudflare-protected domain at all.
+// hardcoded. Extraction (a real page load - the only place this module
+// needs Playwright) takes ~15-30s, so it's cached two levels deep:
+//   1. In-memory, for reuse within one warm process/instance.
+//   2. In Turso, so a *different* cold serverless instance doesn't have to
+//      pay the extraction cost again - without this, every Vercel cold
+//      start was silently repeating the full ~15-30s extraction, which is
+//      why searches could feel slow in production even though the actual
+//      per-query Algolia call (once credentials exist) is sub-second.
+// Both caches are checked before falling back to a live extraction, and a
+// fresh extraction updates both.
 
 import { getBrowser } from "@/lib/scraping/browser";
+import * as algoliaCredentialsRepository from "@/lib/algoliaCredentialsRepository";
 import type { Candidate } from "@/lib/schemas";
 
-interface AlgoliaCredentials {
-  appId: string;
-  apiKey: string;
-  validUntil: number; // unix seconds
-}
+type AlgoliaCredentials = algoliaCredentialsRepository.AlgoliaCredentials;
 
 let cached: AlgoliaCredentials | null = null;
 let inFlightExtraction: Promise<AlgoliaCredentials> | null = null;
+
+function isFresh(credentials: AlgoliaCredentials, now: number): boolean {
+  return credentials.validUntil > now + 60;
+}
 
 function decodeValidUntil(apiKey: string): number {
   try {
@@ -72,16 +78,29 @@ async function extractCredentials(): Promise<AlgoliaCredentials> {
   }
 }
 
-async function getCredentials(): Promise<AlgoliaCredentials> {
+async function getCredentials(forceRefresh = false): Promise<AlgoliaCredentials> {
   const now = Date.now() / 1000;
-  if (cached && cached.validUntil > now + 60) return cached;
+  if (!forceRefresh && cached && isFresh(cached, now)) return cached;
+
+  if (!forceRefresh) {
+    const stored = await algoliaCredentialsRepository.get();
+    if (stored && isFresh(stored, now)) {
+      cached = stored;
+      return cached;
+    }
+  }
 
   // Concurrent callers (e.g. two near-simultaneous searches on a cold cache)
   // should share one extraction, not each launch their own browser.
   if (!inFlightExtraction) {
-    inFlightExtraction = extractCredentials().finally(() => {
-      inFlightExtraction = null;
-    });
+    inFlightExtraction = extractCredentials()
+      .then(async (creds) => {
+        await algoliaCredentialsRepository.upsert(creds);
+        return creds;
+      })
+      .finally(() => {
+        inFlightExtraction = null;
+      });
   }
   cached = await inFlightExtraction;
   return cached;
@@ -129,9 +148,10 @@ export async function searchLive(query: string, limit = 10): Promise<Candidate[]
     hits = await queryAlgolia(credentials, query, limit);
   } catch {
     // Credentials may have been rejected (expired early, revoked) - force a
-    // fresh extraction once and retry before giving up.
+    // fresh extraction once (bypassing both caches, since Turso would just
+    // hand back the same rejected key) and retry before giving up.
     cached = null;
-    credentials = await getCredentials();
+    credentials = await getCredentials(true);
     hits = await queryAlgolia(credentials, query, limit);
   }
 
