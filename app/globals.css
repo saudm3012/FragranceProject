@@ -85,7 +85,8 @@ h2 {
 
 .nav-links {
   display: flex;
-  gap: 0.75rem;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.75rem;
   margin-bottom: 1.5rem;
 }
 
@@ -236,4 +237,443 @@ h2 {
 .spinner-text {
   font-size: 0.9rem;
   opacity: 0.7;
+}
+
+/* ------------------------------------------------------------------ */
+/* Layering page + shared layering components                          */
+/* ------------------------------------------------------------------ */
+
+.section-intro {
+  margin-bottom: 0.75rem;
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.is-stale {
+  opacity: 0.5;
+}
+
+.button-row-inline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.75rem 0;
+}
+
+/* Floating tab switcher (FloatingTabs.tsx) */
+
+.has-floating-tabs {
+  padding-bottom: 7rem;
+}
+
+.floating-tabs {
+  position: fixed;
+  left: 50%;
+  bottom: calc(1.25rem + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  z-index: 20;
+  display: flex;
+  gap: 0.25rem;
+  padding: 0.3rem;
+  border-radius: 999px;
+  background: var(--background);
+  border: 1px solid rgba(128, 128, 128, 0.3);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.15);
+}
+
+.floating-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.55rem 1.1rem;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  font-size: 0.9rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.floating-tab:hover {
+  background: rgba(128, 128, 128, 0.12);
+}
+
+.floating-tab.is-active {
+  background: var(--foreground);
+  color: var(--background);
+}
+
+/* Segmented toggle (scope pickers, picker sources) */
+
+.segmented {
+  display: inline-flex;
+  padding: 0.2rem;
+  border-radius: 8px;
+  border: 1px solid rgba(128, 128, 128, 0.3);
+  gap: 0.2rem;
+}
+
+.segmented-option {
+  padding: 0.35rem 0.75rem;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.segmented-option.is-active {
+  background: rgba(128, 128, 128, 0.18);
+  font-weight: 600;
+}
+
+/* Fragrance chip (FragranceChip.tsx) */
+
+.chip-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.chip-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.fragrance-chip {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  border: 1px solid rgba(128, 128, 128, 0.25);
+  border-radius: 8px;
+  min-width: 0;
+}
+
+.fragrance-chip.is-selected {
+  border-color: var(--foreground);
+  box-shadow: inset 0 0 0 1px var(--foreground);
+}
+
+.chip-main {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex: 1;
+  min-width: 0;
+  padding: 0.5rem 0.6rem;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+button.chip-main {
+  cursor: pointer;
+  border-radius: 8px;
+}
+
+button.chip-main:hover {
+  background: rgba(128, 128, 128, 0.08);
+}
+
+.chip-thumb {
+  width: 32px;
+  height: 42px;
+  flex-shrink: 0;
+  object-fit: cover;
+  border-radius: 4px;
+  background: rgba(128, 128, 128, 0.15);
+}
+
+.chip-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.chip-name {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chip-brand {
+  font-size: 0.8rem;
+  opacity: 0.65;
+}
+
+.chip-trailing {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding-right: 0.6rem;
+  flex-shrink: 0;
+  font-size: 0.85rem;
+}
+
+.in-collection-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: #b8860b;
+}
+
+/* Score badge (ScoreBadge.tsx) */
+
+.score-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.score-badge[data-band="high"] {
+  background: rgba(46, 160, 67, 0.15);
+  color: #2e7d32;
+}
+
+.score-badge[data-band="mid"] {
+  background: rgba(210, 153, 34, 0.18);
+  color: #9a6700;
+}
+
+.score-badge[data-band="low"] {
+  background: rgba(207, 34, 46, 0.14);
+  color: #c62828;
+}
+
+@media (prefers-color-scheme: dark) {
+  .score-badge[data-band="high"] { color: #6fdd8b; }
+  .score-badge[data-band="mid"] { color: #e3b341; }
+  .score-badge[data-band="low"] { color: #ff7b72; }
+  .in-collection-icon { color: #e3b341; }
+}
+
+/* IntelliScent settings menu (ParamPanel.tsx) */
+
+.param-panel {
+  border: 1px solid rgba(128, 128, 128, 0.25);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.param-panel summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 0.75rem;
+  cursor: pointer;
+}
+
+.param-panel-title {
+  font-weight: 600;
+}
+
+.param-summary {
+  font-size: 0.8rem;
+}
+
+.param-panel-body {
+  margin-top: 0.75rem;
+}
+
+.param-row {
+  margin-bottom: 1rem;
+}
+
+.param-row-head {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.9rem;
+}
+
+.param-value {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.param-slider {
+  width: 100%;
+  margin: 0.35rem 0 0.1rem;
+  accent-color: var(--foreground);
+}
+
+.param-scale {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.75rem;
+}
+
+.param-description {
+  font-size: 0.8rem;
+  margin-top: 0.2rem;
+}
+
+/* IntelliScent: action chooser + panels */
+
+.action-sheet {
+  margin: 1rem 0;
+  scroll-margin-bottom: 6rem;
+}
+
+.action-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.action-option {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.75rem;
+  border: 1px solid rgba(128, 128, 128, 0.3);
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.action-option:hover {
+  background: rgba(128, 128, 128, 0.08);
+}
+
+.action-option.is-active {
+  border-color: var(--foreground);
+  box-shadow: inset 0 0 0 1px var(--foreground);
+}
+
+.action-option span {
+  font-size: 0.8rem;
+}
+
+.action-panel {
+  border-top: 1px solid rgba(128, 128, 128, 0.25);
+  padding-top: 1rem;
+}
+
+.action-panel-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.panel-heading {
+  font-size: 1rem;
+  margin: 1rem 0 0.5rem;
+}
+
+.algo-meta {
+  font-size: 0.8rem;
+  margin-bottom: 0.75rem;
+}
+
+.suggestion-reason {
+  font-size: 0.8rem;
+  margin: 0.2rem 0 0 0.6rem;
+}
+
+.rating-result {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.rating-result > .score-badge {
+  font-size: 1rem;
+  padding: 0.3rem 0.8rem;
+}
+
+.pair-list {
+  list-style: none;
+  width: 100%;
+  font-size: 0.85rem;
+}
+
+.pair-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.25rem 0;
+  border-bottom: 1px solid rgba(128, 128, 128, 0.15);
+}
+
+.fragrance-picker .segmented {
+  margin-bottom: 0.75rem;
+}
+
+/* My Combos (ComboCard.tsx) */
+
+.combo-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+  font-size: 0.85rem;
+}
+
+.combo-layers {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.combo-plus {
+  align-self: center;
+  font-weight: 600;
+  opacity: 0.5;
+  line-height: 1;
+}
+
+.combo-params {
+  font-size: 0.8rem;
+  margin-top: 0.5rem;
+}
+
+.combo-notes-label {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin: 0.75rem 0 0.25rem;
+}
+
+.combo-notes {
+  resize: vertical;
+  font-family: inherit;
+  font-size: 0.9rem;
+}
+
+.combo-card-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
 }

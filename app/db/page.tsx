@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
+import NavLinks from "@/app/components/NavLinks";
 import type { Fragrance } from "@/lib/schemas";
 
 type SortKey = "name" | "brand" | "rating" | "ratingCount" | "scrapedAt";
@@ -65,11 +65,7 @@ export default function DbBrowsePage() {
 
   return (
     <div className="container" style={{ maxWidth: 900 }}>
-      <nav className="nav-links">
-        <Link href="/">Home</Link>
-        <Link href="/find">Find Fragrance</Link>
-        <Link href="/collection">Collection</Link>
-      </nav>
+      <NavLinks />
       <h1>Database ({fragrances?.length ?? "…"})</h1>
 
       <input

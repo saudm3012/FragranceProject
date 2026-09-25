@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
+import NavLinks from "@/app/components/NavLinks";
 import type { Fragrance } from "@/lib/schemas";
 import {
   getUsername,
@@ -80,11 +81,7 @@ export default function CollectionPage() {
 
   return (
     <div className="container">
-      <nav className="nav-links">
-        <Link href="/">Home</Link>
-        <Link href="/find">Find Fragrance</Link>
-        <Link href="/db">Browse Database</Link>
-      </nav>
+      <NavLinks />
       <h1>Collection</h1>
 
       {username === undefined && null}

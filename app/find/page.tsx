@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
+import NavLinks from "@/app/components/NavLinks";
 import type { Candidate, Fragrance } from "@/lib/schemas";
 import { addToCollection, getUsername, USERNAME_CHANGED_EVENT } from "@/lib/client/localCollection";
 
@@ -67,11 +67,7 @@ export default function FindFragrancePage() {
 
   return (
     <div className="container">
-      <nav className="nav-links">
-        <Link href="/">Home</Link>
-        <Link href="/collection">Collection</Link>
-        <Link href="/db">Browse Database</Link>
-      </nav>
+      <NavLinks />
       <h1>Find Fragrance</h1>
 
       <form className="search-form" onSubmit={handleSearch}>

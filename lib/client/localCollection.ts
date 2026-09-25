@@ -2,9 +2,13 @@
 // for a real account, coming later), so it would be unsafe to let a typed
 // username read/write another person's collection on the server - anyone
 // could claim any name. Until real auth exists, "the collection" lives
-// entirely in this browser's localStorage, namespaced by username. The
-// shared fragrance *data* (notes, accords, etc.) still lives in Turso via
-// the existing API - only "which fragrances are mine" is local.
+// entirely in this browser's localStorage, namespaced by username (via
+// userStorage.ts). The shared fragrance *data* (notes, accords, etc.) still
+// lives in Turso via the existing API - only "which fragrances are mine" is local.
+
+import { readJSON, writeJSON } from "@/lib/client/userStorage";
+
+export const COLLECTION_NAMESPACE = "collection";
 
 const USERNAME_KEY = "fragrantica_username";
 export const USERNAME_CHANGED_EVENT = "fragrantica-username-changed";
@@ -29,18 +33,8 @@ export function clearUsername(): void {
   window.dispatchEvent(new Event(USERNAME_CHANGED_EVENT));
 }
 
-function collectionKey(username: string): string {
-  return `fragrantica_collection:${username}`;
-}
-
 export function getCollection(username: string): LocalCollectionEntry[] {
-  const raw = window.localStorage.getItem(collectionKey(username));
-  if (!raw) return [];
-  try {
-    return JSON.parse(raw) as LocalCollectionEntry[];
-  } catch {
-    return [];
-  }
+  return readJSON<LocalCollectionEntry[]>(COLLECTION_NAMESPACE, username, []);
 }
 
 export function isInCollection(username: string, fragranceId: number): boolean {
@@ -51,10 +45,10 @@ export function addToCollection(username: string, fragranceId: number): void {
   const current = getCollection(username);
   if (current.some((e) => e.fragranceId === fragranceId)) return;
   current.push({ fragranceId, addedAt: new Date().toISOString() });
-  window.localStorage.setItem(collectionKey(username), JSON.stringify(current));
+  writeJSON(COLLECTION_NAMESPACE, username, current);
 }
 
 export function removeFromCollection(username: string, fragranceId: number): void {
   const current = getCollection(username).filter((e) => e.fragranceId !== fragranceId);
-  window.localStorage.setItem(collectionKey(username), JSON.stringify(current));
+  writeJSON(COLLECTION_NAMESPACE, username, current);
 }
