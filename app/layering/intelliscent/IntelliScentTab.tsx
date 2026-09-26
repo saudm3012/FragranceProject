@@ -4,18 +4,20 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import FragranceChip from "@/app/components/FragranceChip";
 import { INTELLISCENT_ACTIONS } from "@/app/layering/intelliscent/actions";
-import ParamPanel from "@/app/layering/intelliscent/ParamPanel";
+import SettingsPanel from "@/app/layering/intelliscent/SettingsPanel";
+import SuggestionsPanel from "@/app/layering/intelliscent/SuggestionsPanel";
 import type { LayeringTabProps } from "@/app/layering/types";
-import { useFragrances, useIntelliScentParams } from "@/lib/client/hooks";
-import { defaultParams, INTELLISCENT_PARAMS } from "@/lib/intelliscent/params";
+import { useEnginePayload, useFragrances } from "@/lib/client/hooks";
+import { SETTINGS_GROUPS } from "@/lib/intelliscent/settings";
 import type { Fragrance } from "@/lib/schemas";
 
 export default function IntelliScentTab({ username, collectionIds, goToTab }: LayeringTabProps) {
-  const [params, setParams] = useIntelliScentParams(username);
+  const { payload, settings, setSettings, prefs, setPrefs, personal } = useEnginePayload(username);
   const ids = useMemo(() => [...collectionIds], [collectionIds]);
   const { get, loading } = useFragrances(ids);
   const collection = ids.map(get).filter((f): f is Fragrance => f != null);
 
+  const [showBest, setShowBest] = useState(false);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [actionId, setActionId] = useState<string | null>(null);
   const sheetRef = useRef<HTMLDivElement>(null);
@@ -35,22 +37,46 @@ export default function IntelliScentTab({ username, collectionIds, goToTab }: La
 
   return (
     <div>
-      <ParamPanel
-        defs={INTELLISCENT_PARAMS}
-        values={params}
-        onChange={setParams}
-        onReset={() => setParams(defaultParams())}
+      <SettingsPanel
+        groups={SETTINGS_GROUPS}
+        settings={settings}
+        onChange={setSettings}
+        prefs={prefs}
+        onPrefsChange={setPrefs}
+        personal={personal}
       />
 
-      <h2>Your collection</h2>
       {ids.length === 0 ? (
-        <p className="muted">
-          Your collection is empty - <Link href="/find">find fragrances</Link> to add some, then pick one here to
-          layer on.
-        </p>
+        <>
+          <h2>Your collection</h2>
+          <p className="muted">
+            Your collection is empty - <Link href="/find">find fragrances</Link> to add some, then come back to layer
+            them.
+          </p>
+        </>
       ) : (
         <>
-          <p className="muted section-intro">Pick a base scent to layer on.</p>
+          <section className="best-combos">
+            <div className="section-heading-row">
+              <h2>Best combos in your collection</h2>
+              <button type="button" className="button" onClick={() => setShowBest((v) => !v)}>
+                {showBest ? "Hide" : "Find them"}
+              </button>
+            </div>
+            {showBest && (
+              <SuggestionsPanel
+                base={null}
+                fixedScope="collection"
+                username={username}
+                engine={payload}
+                collectionIds={collectionIds}
+                goToTab={goToTab}
+              />
+            )}
+          </section>
+
+          <h2>Your collection</h2>
+          <p className="muted section-intro">Or pick one scent to build around.</p>
           {loading && collection.length === 0 && <p className="spinner-text">Loading…</p>}
           <div className="chip-grid">
             {collection.map((f) => (
@@ -70,7 +96,7 @@ export default function IntelliScentTab({ username, collectionIds, goToTab }: La
       {selected?.id != null && (
         <div ref={sheetRef} className="action-sheet">
           <p>
-            Layer with <strong>{selected.name}</strong>:
+            Build around <strong>{selected.name}</strong>:
           </p>
           <div className="action-options">
             {INTELLISCENT_ACTIONS.map((a) => (
@@ -93,8 +119,8 @@ export default function IntelliScentTab({ username, collectionIds, goToTab }: La
         <action.Panel
           key={`${selected.id}:${action.id}`}
           base={{ ...selected, id: selected.id }}
-          params={params}
           username={username}
+          engine={payload}
           collection={collection}
           collectionIds={collectionIds}
           goToTab={goToTab}

@@ -10,13 +10,24 @@ import {
   USERNAME_CHANGED_EVENT,
   type LocalCollectionEntry,
 } from "@/lib/client/localCollection";
-import { COMBOS_NAMESPACE, type Combo } from "@/lib/client/localCombos";
-import { readRaw, STORE_CHANGED_EVENT, writeJSON } from "@/lib/client/userStorage";
+import { COMBOS_NAMESPACE, normalizeCombo, type Combo } from "@/lib/client/localCombos";
+import {
+  CLASH_NAMESPACE,
+  DEFAULT_PREFS,
+  OVERRIDES_NAMESPACE,
+  PREFS_NAMESPACE,
+  SETTINGS_NAMESPACE,
+  setPrefs,
+  setSettings,
+  type IntelliScentPrefs,
+} from "@/lib/client/localIntelliScent";
+import { readRaw, STORE_CHANGED_EVENT } from "@/lib/client/userStorage";
 import * as fragranceCache from "@/lib/client/fragranceCache";
-import { normalizeParams, type IntelliScentParams } from "@/lib/intelliscent/params";
+import { applyPersonalModel, buildPersonalModel, type PersonalModel } from "@/lib/intelliscent/personalization";
+import type { ProfileOverride } from "@/lib/intelliscent/profile";
+import { normalizeSettings, type IntelliScentSettings } from "@/lib/intelliscent/settings";
+import type { EnginePayload } from "@/lib/intelliscent/types";
 import type { Fragrance } from "@/lib/schemas";
-
-export const INTELLISCENT_PARAMS_NAMESPACE = "intelliscent_params";
 
 function subscribeTo(eventName: string) {
   return (callback: () => void) => {
@@ -70,26 +81,77 @@ export function useCollectionIds(username: string | null | undefined): number[] 
 
 export function useCombos(username: string | null | undefined): Combo[] {
   const raw = useStoreRaw(COMBOS_NAMESPACE, username);
-  return useMemo(() => parseOr<Combo[]>(raw, []), [raw]);
+  return useMemo(
+    () => parseOr<Array<Partial<Combo> & { id: string; fragranceIds: number[] }>>(raw, []).map(normalizeCombo),
+    [raw]
+  );
 }
 
 /**
- * The user's IntelliScent settings, persisted per username. Always
- * normalized against the current param registry, so adding/removing a
- * param in lib/intelliscent/params.ts never breaks previously saved settings.
+ * The user's own IntelliScent settings (before personal nudges), always
+ * normalized against the current settings schema so older saved settings
+ * keep working as settings are added or removed.
  */
-export function useIntelliScentParams(
+export function useIntelliScentSettings(
   username: string | null | undefined
-): [IntelliScentParams, (next: IntelliScentParams) => void] {
-  const raw = useStoreRaw(INTELLISCENT_PARAMS_NAMESPACE, username);
-  const params = useMemo(() => normalizeParams(parseOr<unknown>(raw, null)), [raw]);
-  const setParams = useCallback(
-    (next: IntelliScentParams) => {
-      if (username) writeJSON(INTELLISCENT_PARAMS_NAMESPACE, username, normalizeParams(next));
-    },
-    [username]
+): [IntelliScentSettings, (next: IntelliScentSettings) => void] {
+  const raw = useStoreRaw(SETTINGS_NAMESPACE, username);
+  const settings = useMemo(() => normalizeSettings(parseOr<unknown>(raw, null)), [raw]);
+  const update = useCallback((next: IntelliScentSettings) => username && setSettings(username, next), [username]);
+  return [settings, update];
+}
+
+export function useIntelliScentPrefs(
+  username: string | null | undefined
+): [IntelliScentPrefs, (next: IntelliScentPrefs) => void] {
+  const raw = useStoreRaw(PREFS_NAMESPACE, username);
+  const prefs = useMemo(() => ({ ...DEFAULT_PREFS, ...parseOr<Partial<IntelliScentPrefs>>(raw, {}) }), [raw]);
+  const update = useCallback((next: IntelliScentPrefs) => username && setPrefs(username, next), [username]);
+  return [prefs, update];
+}
+
+export function useProfileOverrides(username: string | null | undefined): Record<string, ProfileOverride> {
+  const raw = useStoreRaw(OVERRIDES_NAMESPACE, username);
+  return useMemo(() => parseOr<Record<string, ProfileOverride>>(raw, {}), [raw]);
+}
+
+export function useClashPairs(username: string | null | undefined): Array<[number, number]> {
+  const raw = useStoreRaw(CLASH_NAMESPACE, username);
+  return useMemo(() => parseOr<Array<[number, number]>>(raw, []), [raw]);
+}
+
+/** The personal preference layer, rebuilt from every wear logged in the combo journal. */
+export function usePersonalModel(username: string | null | undefined): PersonalModel {
+  const combos = useCombos(username);
+  return useMemo(() => buildPersonalModel(combos.flatMap((c) => c.feedback)), [combos]);
+}
+
+/**
+ * Everything the IntelliScent API needs for this user: their settings with
+ * personal nudges applied (unless personalization is off), the personal
+ * matrix layer, their profile corrections and their clash list.
+ */
+export function useEnginePayload(username: string | null | undefined): {
+  payload: EnginePayload;
+  settings: IntelliScentSettings; // the user's own, un-nudged
+  setSettings: (next: IntelliScentSettings) => void;
+  prefs: IntelliScentPrefs;
+  setPrefs: (next: IntelliScentPrefs) => void;
+  personal: PersonalModel;
+} {
+  const [settings, updateSettings] = useIntelliScentSettings(username);
+  const [prefs, updatePrefs] = useIntelliScentPrefs(username);
+  const personal = usePersonalModel(username);
+  const overrides = useProfileOverrides(username);
+  const clashPairs = useClashPairs(username);
+  const payload = useMemo<EnginePayload>(
+    () =>
+      prefs.personalization
+        ? { settings: applyPersonalModel(settings, personal), personal, overrides, clashPairs }
+        : { settings, personal: null, overrides, clashPairs },
+    [settings, prefs.personalization, personal, overrides, clashPairs]
   );
-  return [params, setParams];
+  return { payload, settings, setSettings: updateSettings, prefs, setPrefs: updatePrefs, personal };
 }
 
 /**

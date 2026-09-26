@@ -17,21 +17,96 @@
 //   - The perfumer credit sentence has (at least) two templates: "The nose
 //     behind this fragrance is X." (single perfumer) and "X was created by
 //     A and B." (multiple perfumers) - both are tried.
-//   - Rating / Longevity / Sillage vote widgets are frequently EMPTY for
-//     fragrances with too few community votes (confirmed on the low-vote
-//     sample) - treat all of those fields as legitimately optional, not a
-//     parsing bug when they come back null.
+//   - The community vote widgets (longevity, sillage, when-to-wear) only
+//     exist after the page's own JS renders them - the server HTML has just
+//     placeholders like <seasons-rating-new>. fetchPage() waits for them;
+//     parseVotes() reads them. Low-vote fragrances may still come back with
+//     no votes - those fields are legitimately null, not a parsing bug.
 //   - Fragrantica uses no stable "rating value" class we could confirm live;
 //     that extraction is regex-based best-effort over whatever text is
 //     present and may need revisiting against a page with an actual rating.
 
 import * as cheerio from "cheerio";
 import type { AnyNode } from "domhandler";
-import type { Accord, Fragrance } from "@/lib/schemas";
+import type { Accord, CommunityVotes, Fragrance, VoteCounts } from "@/lib/schemas";
 
 function textOf(el: cheerio.Cheerio<AnyNode>): string | null {
-  const t = el.first().text().trim();
+  // Collapse internal whitespace too - some names render across lines
+  // ("Rose 01 Swiss Arabian\n    for women and men").
+  const t = el.first().text().replace(/\s+/g, " ").trim();
   return t.length > 0 ? t : null;
+}
+
+// --- Community votes -------------------------------------------------------
+// Each widget is a label (e.g. "LONGEVITY") followed by option rows, each an
+// option label span next to a count span ("534", "6.7k"). Options are
+// matched by exact text, so "weak" never matches "very weak".
+
+export const VOTE_OPTIONS = {
+  longevity: ["very weak", "weak", "moderate", "long lasting", "eternal"],
+  sillage: ["intimate", "moderate", "strong", "enormous"],
+  seasons: ["winter", "spring", "summer", "fall"],
+  timeOfDay: ["day", "night"],
+} as const;
+
+function parseCount(text: string): number | null {
+  const m = text.trim().toLowerCase().match(/^([\d.,]+)\s*([km]?)$/);
+  if (!m) return null;
+  const base = parseFloat(m[1].replace(/,/g, ""));
+  const scale = m[2] === "k" ? 1_000 : m[2] === "m" ? 1_000_000 : 1;
+  return Number.isFinite(base) ? Math.round(base * scale) : null;
+}
+
+function spansWithText($: cheerio.CheerioAPI, scope: cheerio.Cheerio<AnyNode>, text: string) {
+  return scope.find("span").filter((_, el) => $(el).text().trim().toLowerCase() === text);
+}
+
+/** The vote count displayed next to an option label: the first count-looking span in its nearest enclosing row. */
+function countNear($: cheerio.CheerioAPI, optionSpan: cheerio.Cheerio<AnyNode>): number | null {
+  let scope = optionSpan.parent();
+  for (let depth = 0; depth < 3 && scope.length; depth++) {
+    for (const el of scope.find("span").toArray()) {
+      if (el === optionSpan.get(0)) continue;
+      const n = parseCount($(el).text());
+      if (n !== null) return n;
+    }
+    scope = scope.parent();
+  }
+  return null;
+}
+
+function parseVoteGroup(
+  $: cheerio.CheerioAPI,
+  label: string,
+  options: readonly string[]
+): VoteCounts | null {
+  const labelSpan = $("span").filter((_, el) => $(el).text().trim().toLowerCase() === label).first();
+  if (!labelSpan.length) return null;
+
+  // Climb to the smallest ancestor holding every option for this widget.
+  let scope = labelSpan.parent();
+  while (scope.length && !options.every((o) => spansWithText($, scope, o).length > 0)) {
+    scope = scope.parent();
+  }
+  if (!scope.length) return null;
+
+  const counts: VoteCounts = {};
+  for (const option of options) {
+    const count = countNear($, spansWithText($, scope, option).first());
+    if (count === null) return null;
+    counts[option] = count;
+  }
+  return Object.values(counts).some((n) => n > 0) ? counts : null;
+}
+
+function parseVotes($: cheerio.CheerioAPI): CommunityVotes | null {
+  const votes: CommunityVotes = {
+    longevity: parseVoteGroup($, "longevity", VOTE_OPTIONS.longevity),
+    sillage: parseVoteGroup($, "sillage", VOTE_OPTIONS.sillage),
+    seasons: parseVoteGroup($, "when to wear", VOTE_OPTIONS.seasons),
+    timeOfDay: parseVoteGroup($, "when to wear", VOTE_OPTIONS.timeOfDay),
+  };
+  return Object.values(votes).some((v) => v !== null) ? votes : null;
 }
 
 function parseAccords($: cheerio.CheerioAPI): Accord[] {
@@ -155,8 +230,7 @@ export function parseFragrancePage(html: string, url: string): Omit<Fragrance, "
   const { notesTop, notesMiddle, notesBase } = parseNotesFromDescription(description) ?? parseNotesPyramid($);
   const accords = parseAccords($);
   const { rating, ratingCount } = parseRating($);
-  const longevity = parseRatingCard($, /^longevity$/i);
-  const sillage = parseRatingCard($, /^sillage$/i);
+  const votes = parseVotes($);
   const perfumer = parsePerfumer(description);
 
   return {
@@ -169,8 +243,7 @@ export function parseFragrancePage(html: string, url: string): Omit<Fragrance, "
     accords,
     rating,
     ratingCount,
-    longevity,
-    sillage,
+    votes,
     perfumer,
     description,
     imageUrl,

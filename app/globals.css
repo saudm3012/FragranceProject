@@ -592,38 +592,6 @@ button.chip-main:hover {
   margin-bottom: 0.75rem;
 }
 
-.suggestion-reason {
-  font-size: 0.8rem;
-  margin: 0.2rem 0 0 0.6rem;
-}
-
-.rating-result {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0.5rem;
-  margin-bottom: 1rem;
-}
-
-.rating-result > .score-badge {
-  font-size: 1rem;
-  padding: 0.3rem 0.8rem;
-}
-
-.pair-list {
-  list-style: none;
-  width: 100%;
-  font-size: 0.85rem;
-}
-
-.pair-list li {
-  display: flex;
-  justify-content: space-between;
-  gap: 0.5rem;
-  padding: 0.25rem 0;
-  border-bottom: 1px solid rgba(128, 128, 128, 0.15);
-}
-
 .fragrance-picker .segmented {
   margin-bottom: 0.75rem;
 }
@@ -652,11 +620,6 @@ button.chip-main:hover {
   line-height: 1;
 }
 
-.combo-params {
-  font-size: 0.8rem;
-  margin-top: 0.5rem;
-}
-
 .combo-notes-label {
   display: block;
   font-size: 0.85rem;
@@ -676,4 +639,261 @@ button.chip-main:hover {
   align-items: center;
   gap: 0.75rem;
   margin-top: 0.5rem;
+}
+
+/* ------------------------------------------------------------------ */
+/* IntelliScent (layering framework) UI                                */
+/* ------------------------------------------------------------------ */
+
+.small {
+  font-size: 0.8rem;
+}
+
+.section-heading-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.section-heading-row h2 {
+  margin-bottom: 0;
+}
+
+.best-combos {
+  margin-bottom: 1.75rem;
+}
+
+.best-combos .action-panel {
+  margin-top: 0.75rem;
+}
+
+/* Settings groups (SettingsPanel.tsx, ProfilePanel.tsx) */
+
+.settings-group {
+  border-top: 1px solid rgba(128, 128, 128, 0.2);
+  padding-top: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.settings-group-title {
+  font-size: 0.95rem;
+  margin-bottom: 0.5rem;
+}
+
+details.settings-group > summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.95rem;
+  margin-bottom: 0.5rem;
+}
+
+.param-row.compact {
+  margin-bottom: 0.6rem;
+}
+
+.chip-toggle-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.35rem;
+}
+
+.chip-toggle {
+  padding: 0.3rem 0.7rem;
+  border-radius: 999px;
+  border: 1px solid rgba(128, 128, 128, 0.35);
+  background: transparent;
+  color: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.chip-toggle.is-active {
+  background: var(--foreground);
+  color: var(--background);
+  border-color: var(--foreground);
+}
+
+.toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.personal-adjustments {
+  font-size: 0.8rem;
+  margin: 0.4rem 0 0 1.1rem;
+}
+
+.source-tag {
+  display: inline-block;
+  margin-left: 0.4rem;
+  padding: 0.05rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 500;
+  background: rgba(128, 128, 128, 0.15);
+  vertical-align: middle;
+}
+
+.source-tag.source-fragrantica-votes {
+  background: rgba(46, 160, 67, 0.15);
+}
+
+.source-tag.source-manual {
+  background: rgba(47, 129, 247, 0.18);
+}
+
+.source-tag.source-estimated {
+  background: rgba(210, 153, 34, 0.18);
+}
+
+/* Combo result (ComboResultView.tsx) */
+
+.combo-result-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.6rem;
+}
+
+.combo-result-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.combo-member {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.role-tag {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.7;
+}
+
+.role-tag.role-anchor {
+  color: #9a6700;
+  opacity: 1;
+}
+
+@media (prefers-color-scheme: dark) {
+  .role-tag.role-anchor {
+    color: #e3b341;
+  }
+}
+
+.blend-description {
+  font-style: italic;
+  margin: 0.6rem 0;
+}
+
+.combo-details {
+  margin-top: 0.4rem;
+  font-size: 0.9rem;
+}
+
+.combo-details > summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.85rem;
+  padding: 0.25rem 0;
+}
+
+.term-row {
+  display: grid;
+  grid-template-columns: 5.5rem 1fr 2rem;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.3rem 0;
+  font-size: 0.8rem;
+}
+
+.term-track {
+  height: 8px;
+  border-radius: 4px;
+  background: rgba(128, 128, 128, 0.15);
+  overflow: hidden;
+}
+
+.term-fill {
+  height: 100%;
+  background: currentColor;
+  opacity: 0.55;
+}
+
+.term-value {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.penalty-list {
+  list-style: none;
+  font-size: 0.8rem;
+  margin-top: 0.4rem;
+}
+
+.penalty-list li {
+  padding: 0.2rem 0;
+}
+
+.penalty-list strong {
+  color: #c62828;
+}
+
+.recipe-steps {
+  margin: 0.4rem 0 0.4rem 1.2rem;
+  font-size: 0.85rem;
+}
+
+.recipe-steps li {
+  margin-bottom: 0.4rem;
+}
+
+.recipe-steps li span {
+  display: block;
+}
+
+/* Wear log (ComboCard.tsx, FeedbackForm.tsx) */
+
+.feedback-form {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.6rem;
+  margin: 0.5rem 0;
+}
+
+.rating-row {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.wear-log {
+  list-style: none;
+  font-size: 0.8rem;
+  margin-top: 0.5rem;
+}
+
+.wear-log li {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.25rem 0;
+  border-bottom: 1px solid rgba(128, 128, 128, 0.15);
+}
+
+.combo-card-actions .toggle-row {
+  margin-right: auto;
 }

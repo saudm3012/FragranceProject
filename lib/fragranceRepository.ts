@@ -13,8 +13,7 @@ interface FragranceRow {
   accords: string | null;
   rating: number | null;
   rating_count: number | null;
-  longevity: string | null;
-  sillage: string | null;
+  votes: string | null; // JSON CommunityVotes
   perfumer: string | null;
   description: string | null;
   image_url: string | null;
@@ -24,7 +23,8 @@ interface FragranceRow {
 function rowToFragrance(row: FragranceRow): Fragrance {
   return {
     id: row.id,
-    name: row.name,
+    // Rows scraped before parse.ts collapsed whitespace can hold line breaks.
+    name: row.name.replace(/\s+/g, " ").trim(),
     brand: row.brand,
     url: row.url,
     notesTop: row.notes_top ? JSON.parse(row.notes_top) : [],
@@ -33,8 +33,7 @@ function rowToFragrance(row: FragranceRow): Fragrance {
     accords: row.accords ? JSON.parse(row.accords) : [],
     rating: row.rating,
     ratingCount: row.rating_count,
-    longevity: row.longevity,
-    sillage: row.sillage,
+    votes: row.votes ? JSON.parse(row.votes) : null,
     perfumer: row.perfumer,
     description: row.description,
     imageUrl: row.image_url,
@@ -101,14 +100,14 @@ export async function upsert(fragrance: Omit<Fragrance, "id">): Promise<number> 
   await db.execute({
     sql: `
       INSERT INTO fragrances (name, brand, url, notes_top, notes_middle, notes_base, accords,
-                               rating, rating_count, longevity, sillage, perfumer, description,
+                               rating, rating_count, votes, perfumer, description,
                                image_url, scraped_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(url) DO UPDATE SET
         name = excluded.name, brand = excluded.brand,
         notes_top = excluded.notes_top, notes_middle = excluded.notes_middle, notes_base = excluded.notes_base,
         accords = excluded.accords, rating = excluded.rating, rating_count = excluded.rating_count,
-        longevity = excluded.longevity, sillage = excluded.sillage, perfumer = excluded.perfumer,
+        votes = excluded.votes, perfumer = excluded.perfumer,
         description = excluded.description, image_url = excluded.image_url, scraped_at = excluded.scraped_at
     `,
     args: [
@@ -121,8 +120,7 @@ export async function upsert(fragrance: Omit<Fragrance, "id">): Promise<number> 
       JSON.stringify(fragrance.accords),
       fragrance.rating,
       fragrance.ratingCount,
-      fragrance.longevity,
-      fragrance.sillage,
+      fragrance.votes ? JSON.stringify(fragrance.votes) : null,
       fragrance.perfumer,
       fragrance.description,
       fragrance.imageUrl,

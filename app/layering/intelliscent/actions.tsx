@@ -4,6 +4,7 @@
 
 import type { ComponentType } from "react";
 import ComboMatchPanel from "@/app/layering/intelliscent/ComboMatchPanel";
+import ProfilePanel from "@/app/layering/intelliscent/ProfilePanel";
 import SuggestionsPanel from "@/app/layering/intelliscent/SuggestionsPanel";
 import type { IntelliScentActionProps } from "@/app/layering/intelliscent/types";
 
@@ -18,13 +19,19 @@ export const INTELLISCENT_ACTIONS: readonly IntelliScentActionDef[] = [
   {
     id: "suggest",
     label: "Create suggestions",
-    description: "Let IntelliScent rank fragrances that layer well with this one.",
+    description: "Rank pairs (and light third scents) that layer well with this one.",
     Panel: SuggestionsPanel,
   },
   {
     id: "match",
     label: "Combo match",
-    description: "Pick one or more scents to wear with it and get the combo rated.",
+    description: "Pick scents to wear with it and get the combo scored, with a recipe.",
     Panel: ComboMatchPanel,
+  },
+  {
+    id: "profile",
+    label: "Profile",
+    description: "See how IntelliScent reads this scent, and correct it from how it actually wears on you.",
+    Panel: ProfilePanel,
   },
 ];

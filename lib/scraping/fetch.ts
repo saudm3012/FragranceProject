@@ -12,6 +12,10 @@ const NAV_TIMEOUT_MS = 30_000;
 // usually resolves well under this.
 const CHALLENGE_MAX_WAIT_MS = 8_000;
 const CHALLENGE_POLL_MS = 250;
+// The community vote widgets (longevity / sillage / when-to-wear) are
+// rendered by the page's own JS after load. Wait for them, bounded - a
+// low-vote fragrance may never render them, and that's fine.
+const VOTES_MAX_WAIT_MS = 10_000;
 
 export interface FetchResult {
   url: string;
@@ -47,6 +51,24 @@ export async function fetchPage(url: string): Promise<FetchResult> {
         })
         .catch(() => {}); // proceed with whatever's rendered if it never clears in time
     }
+
+    // Scroll part-way so any lazily-mounted widgets start, then wait until the
+    // longevity label and the season widget both exist as real elements
+    // (matched by exact span text, so review prose mentioning "longevity"
+    // doesn't count).
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight * 0.3)).catch(() => {});
+    await page
+      .waitForFunction(
+        () => {
+          const spanTexts = new Set(
+            Array.from(document.querySelectorAll("span"), (s) => (s.textContent ?? "").trim().toLowerCase())
+          );
+          return spanTexts.has("longevity") && spanTexts.has("winter");
+        },
+        undefined,
+        { timeout: VOTES_MAX_WAIT_MS, polling: CHALLENGE_POLL_MS }
+      )
+      .catch(() => {}); // no vote widgets - parse whatever's there
 
     const html = await page.content();
     return { url, status: response?.status() ?? 0, html };

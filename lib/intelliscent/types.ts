@@ -1,67 +1,49 @@
+// Request/response shapes for the IntelliScent API, shared by the route
+// handlers and the browser client.
+
+import type { PersonalLayer, Recipe, ScoredCombo } from "@/lib/intelliscent/engine";
+import type { FragranceProfile, ProfileOverride } from "@/lib/intelliscent/profile";
+import type { IntelliScentSettings } from "@/lib/intelliscent/settings";
 import type { Fragrance } from "@/lib/schemas";
-import type { IntelliScentParams } from "@/lib/intelliscent/params";
 
-export interface AlgorithmInfo {
-  id: string;
-  name: string;
-  version: string;
-  isPlaceholder: boolean; // surfaced in the UI so placeholder output is never mistaken for the real thing
+/** Everything per-user the engine needs. All of it lives client-side until real accounts exist. */
+export interface EnginePayload {
+  settings: IntelliScentSettings; // effective settings (personal nudges already applied)
+  personal?: PersonalLayer | null;
+  overrides?: Record<string, ProfileOverride>; // fragranceId -> hand corrections
+  clashPairs?: Array<[number, number]>; // personal clash list
 }
 
-export interface ScoredCandidate {
-  fragranceId: number;
-  score: number; // 0-100
-  reason: string; // one short human-readable line
+export interface ComboResult extends ScoredCombo {
+  recipe: Recipe;
 }
 
-export interface PairScore {
-  aId: number;
-  bId: number;
-  score: number; // 0-100
-}
-
-export interface ComboRating {
-  score: number; // 0-100
-  label: string;
-  pairs: PairScore[];
-}
-
-/**
- * The contract any IntelliScent implementation must satisfy. Everything
- * else (API, service, UI) talks to this interface only, so the real
- * algorithm can replace the placeholder by swapping one export in index.ts.
- */
-export interface IntelliScentAlgorithm {
-  info: AlgorithmInfo;
-  /** Rank `pool` by how well each would layer with `base`. Highest first. */
-  suggest(base: Fragrance, pool: Fragrance[], params: IntelliScentParams, limit: number): ScoredCandidate[];
-  /** Score a combination of 2+ fragrances worn together. */
-  rateCombo(fragrances: Fragrance[], params: IntelliScentParams): ComboRating;
-}
-
-// --- API request/response shapes, shared by the route handlers and the client ---
-
-export interface SuggestRequest {
-  fragranceId: number;
-  params: IntelliScentParams;
-  poolIds?: number[]; // restrict candidates to these (e.g. the user's collection); omit for every cached fragrance
+export interface SuggestRequest extends EnginePayload {
+  baseId?: number | null; // omit for "best combos in this pool"
+  poolIds?: number[]; // restrict to these (e.g. the collection); omit for every cached fragrance
   limit?: number;
 }
 
 export interface SuggestResponse {
-  algorithm: AlgorithmInfo;
-  params: IntelliScentParams; // as normalized and actually used
   poolSize: number;
-  suggestions: Array<ScoredCandidate & { fragrance: Fragrance }>;
+  results: ComboResult[];
+  fragrances: Fragrance[]; // every fragrance referenced in results, for display
 }
 
-export interface RateRequest {
+export interface RateRequest extends EnginePayload {
   fragranceIds: number[];
-  params: IntelliScentParams;
 }
 
 export interface RateResponse {
-  algorithm: AlgorithmInfo;
-  params: IntelliScentParams;
-  rating: ComboRating;
+  result: ComboResult;
+  fragrances: Fragrance[];
+}
+
+export interface ProfilesRequest {
+  ids: number[];
+  overrides?: Record<string, ProfileOverride>;
+}
+
+export interface ProfilesResponse {
+  profiles: Array<{ estimated: FragranceProfile; effective: FragranceProfile }>;
 }

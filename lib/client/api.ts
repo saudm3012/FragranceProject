@@ -2,7 +2,14 @@
 // components don't hand-roll fetch URLs and error handling.
 
 import type { Candidate, Fragrance, SearchResponse } from "@/lib/schemas";
-import type { RateRequest, RateResponse, SuggestRequest, SuggestResponse } from "@/lib/intelliscent/types";
+import type {
+  ProfilesRequest,
+  ProfilesResponse,
+  RateRequest,
+  RateResponse,
+  SuggestRequest,
+  SuggestResponse,
+} from "@/lib/intelliscent/types";
 
 async function request<T>(input: string, init?: RequestInit): Promise<T> {
   const res = await fetch(input, init);
@@ -41,4 +48,8 @@ export function suggestLayers(body: SuggestRequest): Promise<SuggestResponse> {
 
 export function rateCombo(body: RateRequest): Promise<RateResponse> {
   return postJSON<RateResponse>("/api/intelliscent/rate", body);
+}
+
+export function fetchProfiles(body: ProfilesRequest): Promise<ProfilesResponse> {
+  return postJSON<ProfilesResponse>("/api/intelliscent/profiles", body);
 }
