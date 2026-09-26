@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import FragranceChip from "@/app/components/FragranceChip";
 import Pager from "@/app/components/Pager";
-import { resolveFragrance, searchFragrances } from "@/lib/client/api";
+import { isAbortError, resolveFragrance, searchFragrances } from "@/lib/client/api";
 import * as fragranceCache from "@/lib/client/fragranceCache";
 import type { Candidate, Fragrance, SearchResponse } from "@/lib/schemas";
 
@@ -32,6 +32,8 @@ export default function FragrancePicker({
   const [query, setQuery] = useState("");
   const [searchedFor, setSearchedFor] = useState("");
   const [response, setResponse] = useState<SearchResponse | null>(null);
+  const resolveRequest = useRef<AbortController | null>(null);
+  useEffect(() => () => resolveRequest.current?.abort(), []);
   const [searching, setSearching] = useState(false);
   const [resolvingUrl, setResolvingUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -58,17 +60,24 @@ export default function FragrancePicker({
     if (query.trim()) void runSearch(query.trim(), 0);
   }
 
+  // Picking another result while one is loading cancels waiting on the first.
   async function handlePickCandidate(candidate: Candidate) {
+    resolveRequest.current?.abort();
+    const controller = new AbortController();
+    resolveRequest.current = controller;
     setResolvingUrl(candidate.url);
     setError(null);
     try {
-      const fragrance = await resolveFragrance(candidate.url);
+      const fragrance = await resolveFragrance(candidate.url, controller.signal);
       fragranceCache.prime([fragrance]);
       onPick(fragrance);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      if (!isAbortError(err)) setError(err instanceof Error ? err.message : String(err));
     } finally {
-      setResolvingUrl(null);
+      if (resolveRequest.current === controller) {
+        resolveRequest.current = null;
+        setResolvingUrl(null);
+      }
     }
   }
 
@@ -127,7 +136,7 @@ export default function FragrancePicker({
                 name={c.name}
                 brand={c.brand}
                 inCollection={collectionUrls.has(c.url)}
-                onClick={resolvingUrl ? undefined : () => handlePickCandidate(c)}
+                onClick={resolvingUrl === c.url ? undefined : () => handlePickCandidate(c)}
                 trailing={resolvingUrl === c.url ? <span className="spinner-text">Adding…</span> : null}
               />
             ))}

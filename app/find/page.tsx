@@ -1,10 +1,10 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import InCollectionIcon from "@/app/components/InCollectionIcon";
 import NavLinks from "@/app/components/NavLinks";
 import Pager from "@/app/components/Pager";
-import { quickAdd, resolveFragrance, searchFragrances } from "@/lib/client/api";
+import { isAbortError, quickAdd, resolveFragrance, searchFragrances } from "@/lib/client/api";
 import * as fragranceCache from "@/lib/client/fragranceCache";
 import { useCollectionIds, useFragrances, useUsername } from "@/lib/client/hooks";
 import { addToCollection } from "@/lib/client/localCollection";
@@ -14,7 +14,7 @@ export default function FindFragrancePage() {
   const [query, setQuery] = useState("");
   const [searchedFor, setSearchedFor] = useState(""); // the query the shown results belong to (the input may have changed since)
   const [response, setResponse] = useState<SearchResponse | null>(null);
-  const [searchCount, setSearchCount] = useState(0); // keys result rows, so each new search/page starts collapsed
+  const [searchCount, setSearchCount] = useState(0); // keys result rows, so each new search/page starts fresh
   const [searching, setSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const resultsRef = useRef<HTMLDivElement>(null);
@@ -22,13 +22,69 @@ export default function FindFragrancePage() {
   const collectionIdList = useCollectionIds(username);
   const collectionIds = new Set(collectionIdList);
 
+  // One result open at a time. Opening another cancels waiting on the
+  // previous one's details (the server still finishes and stores them).
+  const [openUrl, setOpenUrl] = useState<string | null>(null);
+  const [loadingUrl, setLoadingUrl] = useState<string | null>(null);
+  const [detailsError, setDetailsError] = useState<{ url: string; message: string } | null>(null);
+  const [learnedIds, setLearnedIds] = useState<Record<string, number>>({}); // url -> stored id, for results that weren't stored when searched
+  const detailsRequest = useRef<AbortController | null>(null);
+
+  useEffect(() => () => detailsRequest.current?.abort(), []);
+
+  function cancelDetails() {
+    detailsRequest.current?.abort();
+    detailsRequest.current = null;
+    setLoadingUrl(null);
+  }
+
+  function learnId(url: string, id: number) {
+    setLearnedIds((m) => (m[url] === id ? m : { ...m, [url]: id }));
+  }
+
+  const idFor = (c: Candidate) => c.id ?? learnedIds[c.url] ?? null;
+
+  async function toggle(candidate: Candidate) {
+    cancelDetails();
+    setDetailsError(null);
+    if (openUrl === candidate.url) {
+      setOpenUrl(null);
+      return;
+    }
+    setOpenUrl(candidate.url);
+
+    const id = idFor(candidate);
+    const cached = id != null ? fragranceCache.getCached(id) : undefined;
+    if (cached && !isStub(cached)) return; // details already in hand
+
+    const controller = new AbortController();
+    detailsRequest.current = controller;
+    setLoadingUrl(candidate.url);
+    try {
+      const f = await resolveFragrance(candidate.url, controller.signal);
+      fragranceCache.prime([f]);
+      if (f.id != null) learnId(candidate.url, f.id);
+    } catch (err) {
+      if (isAbortError(err)) return; // superseded by another click - nothing to report
+      setDetailsError({ url: candidate.url, message: err instanceof Error ? err.message : String(err) });
+    } finally {
+      if (detailsRequest.current === controller) {
+        detailsRequest.current = null;
+        setLoadingUrl(null);
+      }
+    }
+  }
+
   async function runSearch(q: string, page: number) {
+    cancelDetails();
     setSearching(true);
     setError(null);
     try {
       setResponse(await searchFragrances(q, page));
       setSearchedFor(q);
       setSearchCount((n) => n + 1);
+      setOpenUrl(null);
+      setDetailsError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -77,7 +133,18 @@ export default function FindFragrancePage() {
         <div ref={resultsRef} className="results-section">
           <h2>Results</h2>
           {response.candidates.map((c) => (
-            <ResultRow key={`${searchCount}|${c.url}`} candidate={c} username={username ?? null} collectionIds={collectionIds} />
+            <ResultRow
+              key={`${searchCount}|${c.url}`}
+              candidate={c}
+              id={idFor(c)}
+              expanded={openUrl === c.url}
+              loadingDetails={loadingUrl === c.url}
+              detailsError={detailsError?.url === c.url ? detailsError.message : null}
+              onToggle={() => void toggle(c)}
+              onLearnId={(id) => learnId(c.url, id)}
+              username={username ?? null}
+              collectionIds={collectionIds}
+            />
           ))}
           <Pager
             page={response.page}
@@ -93,52 +160,43 @@ export default function FindFragrancePage() {
 }
 
 /**
- * One search result: expands in place to show details (other results stay
- * visible), and can be added to the collection straight away - new
+ * One search result: opens in place to show details (other results stay
+ * visible), and has its own add button so nothing needs opening first - new
  * fragrances are stored as a stub and their details load in the background.
  */
 function ResultRow({
   candidate,
+  id,
+  expanded,
+  loadingDetails,
+  detailsError,
+  onToggle,
+  onLearnId,
   username,
   collectionIds,
 }: {
   candidate: Candidate;
+  id: number | null;
+  expanded: boolean;
+  loadingDetails: boolean;
+  detailsError: string | null;
+  onToggle: () => void;
+  onLearnId: (id: number) => void;
   username: string | null;
   collectionIds: ReadonlySet<number>;
 }) {
-  const [learnedId, setLearnedId] = useState<number | null>(null);
-  const [expanded, setExpanded] = useState(false);
-  const [loadingDetails, setLoadingDetails] = useState(false);
   const [adding, setAdding] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [addError, setAddError] = useState<string | null>(null);
 
-  const id = candidate.id ?? learnedId;
   const { get } = useFragrances(id != null ? [id] : []);
   const stored = id != null ? get(id) : undefined;
   const details = stored && !isStub(stored) ? stored : null;
   const inCollection = id != null && collectionIds.has(id);
 
-  async function toggle() {
-    const next = !expanded;
-    setExpanded(next);
-    if (!next || details || loadingDetails) return;
-    setLoadingDetails(true);
-    setError(null);
-    try {
-      const f = await resolveFragrance(candidate.url);
-      fragranceCache.prime([f]);
-      if (f.id != null) setLearnedId(f.id);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setLoadingDetails(false);
-    }
-  }
-
   async function handleAdd() {
     if (!username) return;
     setAdding(true);
-    setError(null);
+    setAddError(null);
     try {
       // Already stored (even as a stub)? Adding is purely local - no request needed.
       let fragranceId = id;
@@ -146,20 +204,22 @@ function ResultRow({
         const f = await quickAdd(candidate);
         fragranceCache.prime([f]);
         fragranceId = f.id ?? null;
-        setLearnedId(fragranceId);
+        if (fragranceId != null) onLearnId(fragranceId);
       }
       if (fragranceId != null) addToCollection(username, fragranceId);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setAddError(err instanceof Error ? err.message : String(err));
     } finally {
       setAdding(false);
     }
   }
 
+  const error = addError ?? detailsError;
+
   return (
     <div className={expanded ? "card result-row is-expanded" : "card result-row"}>
       <div className="result-row-header">
-        <button type="button" className="result-row-main" onClick={toggle} aria-expanded={expanded}>
+        <button type="button" className="result-row-main" onClick={onToggle} aria-expanded={expanded}>
           <span className="result-row-chevron" aria-hidden="true">
             {expanded ? "▾" : "▸"}
           </span>
@@ -173,9 +233,17 @@ function ResultRow({
         </button>
         <div className="result-row-actions">
           {inCollection ? (
-            <span className="muted small">{stored && isStub(stored) ? "Added · loading details…" : "In collection"}</span>
+            <button type="button" className="button" disabled title="Already in your collection">
+              {stored && isStub(stored) ? "✓ Added · loading…" : "✓ In collection"}
+            </button>
           ) : (
-            <button type="button" className="button" onClick={handleAdd} disabled={!username || adding}>
+            <button
+              type="button"
+              className="button"
+              onClick={handleAdd}
+              disabled={!username || adding}
+              title={username ? "Add to your collection without opening it" : "Set a username first"}
+            >
               {adding ? "Adding…" : "+ Add"}
             </button>
           )}
@@ -188,9 +256,11 @@ function ResultRow({
         <div className="result-row-details">
           {details ? (
             <FragranceDetail fragrance={details} />
-          ) : (
+          ) : loadingDetails ? (
             <p className="spinner-text">Loading details… (the first look at a fragrance takes a few seconds)</p>
-          )}
+          ) : !detailsError ? (
+            <p className="spinner-text">Loading details…</p>
+          ) : null}
         </div>
       )}
     </div>

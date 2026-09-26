@@ -42,9 +42,18 @@ export function quickAdd(candidate: Candidate): Promise<Fragrance> {
   return postJSON<Fragrance>("/api/fragrance/quick-add", candidate);
 }
 
-/** Resolves a search candidate to a full, stored Fragrance (fetches and caches it server-side if new - can take several seconds). */
-export function resolveFragrance(url: string): Promise<Fragrance> {
-  return request<Fragrance>(`/api/fragrance?url=${encodeURIComponent(url)}`);
+/**
+ * Resolves a search candidate to a full, stored Fragrance (fetches and
+ * caches it server-side if new - can take several seconds). Pass a signal
+ * to cancel waiting for it; the server still finishes and stores the
+ * record, so reopening it later is instant.
+ */
+export function resolveFragrance(url: string, signal?: AbortSignal): Promise<Fragrance> {
+  return request<Fragrance>(`/api/fragrance?url=${encodeURIComponent(url)}`, { signal });
+}
+
+export function isAbortError(err: unknown): boolean {
+  return err instanceof DOMException && err.name === "AbortError";
 }
 
 export function suggestLayers(body: SuggestRequest): Promise<SuggestResponse> {
