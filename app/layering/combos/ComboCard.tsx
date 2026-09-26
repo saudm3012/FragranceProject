@@ -6,7 +6,9 @@ import FragranceChip from "@/app/components/FragranceChip";
 import FeedbackForm from "@/app/layering/combos/FeedbackForm";
 import { rateCombo } from "@/lib/client/api";
 import * as fragranceCache from "@/lib/client/fragranceCache";
-import { addClashes, removeClashes } from "@/lib/client/localIntelliScent";
+import { useCheckins } from "@/lib/client/hooks";
+import { addClashes, recordCheckins, removeClashes } from "@/lib/client/localIntelliScent";
+import type { CheckinAnswer } from "@/lib/intelliscent/checkins";
 import {
   addFeedback,
   deleteCombo,
@@ -51,6 +53,7 @@ export default function ComboCard({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const dirty = draft !== combo.notes;
+  const checkins = useCheckins(username);
 
   async function score() {
     setBusy(true);
@@ -68,19 +71,26 @@ export default function ComboCard({
 
   // Each wear is logged with the combo's current score breakdown - which
   // accord pairings it leaned on is what personalization learns from.
-  async function logWear(rating: FeedbackEvent["rating"], tags: FeedbackTag[]) {
+  async function logWear(rating: FeedbackEvent["rating"], tags: FeedbackTag[], answers: Record<number, CheckinAnswer>) {
     setBusy(true);
     setError(null);
     let snapshot: FeedbackEvent["snapshot"];
     try {
       const res = await rateCombo({ ...engine, fragranceIds: combo.fragranceIds });
-      snapshot = { terms: res.result.terms, cells: res.result.cells, size: combo.fragranceIds.length };
+      snapshot = {
+        terms: res.result.terms,
+        cells: res.result.cells,
+        size: combo.fragranceIds.length,
+        penaltyRules: res.result.penalties.map((p) => p.rule),
+      };
     } catch {
       // Still log the wear; without cells it only informs the tag-driven adjustments.
       const terms = combo.snapshot?.terms ?? { harmony: 0.5, structure: 0.5, interest: 0.5, context: null };
       snapshot = { terms, cells: [], size: combo.fragranceIds.length };
     }
     addFeedback(username, combo.id, { id: crypto.randomUUID(), at: new Date().toISOString(), rating, tags, snapshot });
+    const answered = Object.fromEntries(Object.entries(answers).filter(([, a]) => Object.values(a).some((v) => v !== undefined)));
+    if (Object.keys(answered).length > 0) recordCheckins(username, answered);
     setBusy(false);
   }
 
@@ -146,7 +156,12 @@ export default function ComboCard({
           Log a wear
           {combo.feedback.length > 0 && ` · worn ${combo.feedback.length}×`}
         </summary>
-        <FeedbackForm onSubmit={logWear} busy={busy} />
+        <FeedbackForm
+          fragrances={combo.fragranceIds.map((id) => ({ id, name: getFragrance(id)?.name ?? `#${id}` }))}
+          checkins={checkins}
+          onSubmit={logWear}
+          busy={busy}
+        />
         {combo.feedback.length > 0 && (
           <ul className="wear-log">
             {[...combo.feedback].reverse().map((e) => (

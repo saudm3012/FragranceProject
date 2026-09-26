@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import ComboResultView from "@/app/components/ComboResultView";
+import { bandOf, SCORE_BANDS } from "@/app/components/ScoreBadge";
 import type { IntelliScentActionProps } from "@/app/layering/intelliscent/types";
 import { suggestLayers } from "@/lib/client/api";
 import * as fragranceCache from "@/lib/client/fragranceCache";
@@ -138,30 +139,52 @@ export default function SuggestionsPanel({
             {triples > 0 && ` (${triples} with a third scent)`}
           </p>
 
+          {response.insights.map((text) => (
+            <p key={text} className="insight">
+              {text}
+            </p>
+          ))}
+
           {response.results.length === 0 && <p className="muted">{activeScope.emptyMessage}</p>}
 
-          {response.results.map((r) => {
-            const saved = savedKeys.has(comboKey(r.fragranceIds));
-            return (
-              <div key={comboKey(r.fragranceIds)} className="card">
-                <ComboResultView
-                  result={r}
-                  getFragrance={get}
-                  collectionIds={collectionIds}
-                  actions={
-                    <>
-                      <button type="button" className="button" disabled={saved} onClick={() => save(r)}>
-                        {saved ? "Saved" : "Save combo"}
-                      </button>
-                      {saved && (
-                        <button type="button" className="link-button" onClick={() => goToTab("combos")}>
-                          View
+          {SCORE_BANDS.map((band) => {
+            const inBand = response.results.filter((r) => bandOf(r.score).id === band.id);
+            if (inBand.length === 0) return null;
+            const cards = inBand.map((r) => {
+              const saved = savedKeys.has(comboKey(r.fragranceIds));
+              return (
+                <div key={comboKey(r.fragranceIds)} className="card">
+                  <ComboResultView
+                    result={r}
+                    getFragrance={get}
+                    collectionIds={collectionIds}
+                    actions={
+                      <>
+                        <button type="button" className="button" disabled={saved} onClick={() => save(r)}>
+                          {saved ? "Saved" : "Save combo"}
                         </button>
-                      )}
-                    </>
-                  }
-                />
-              </div>
+                        {saved && (
+                          <button type="button" className="link-button" onClick={() => goToTab("combos")}>
+                            View
+                          </button>
+                        )}
+                      </>
+                    }
+                  />
+                </div>
+              );
+            });
+            const heading = `${band.label} (${inBand.length})`;
+            return band.collapsed ? (
+              <details key={band.id} className="band-group">
+                <summary>{heading}</summary>
+                {cards}
+              </details>
+            ) : (
+              <section key={band.id}>
+                <h4 className="band-heading">{heading}</h4>
+                {cards}
+              </section>
             );
           })}
         </div>

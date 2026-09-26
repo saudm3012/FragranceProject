@@ -47,6 +47,29 @@ export function isStub(f: Pick<Fragrance, "scrapedAt">): boolean {
   return f.scrapedAt === "";
 }
 
+/**
+ * User-created fragrances (not on Fragrantica, or a personal blend) are
+ * stored like any other, with a `custom:<uuid>` url instead of a
+ * Fragrantica page - so nothing ever tries to scrape or refresh them.
+ */
+export const CUSTOM_URL_PREFIX = "custom:";
+
+export function isCustom(f: Pick<Fragrance, "url">): boolean {
+  return f.url.startsWith(CUSTOM_URL_PREFIX);
+}
+
+export const CustomFragranceSchema = z.object({
+  name: z.string().trim().min(1).max(120),
+  brand: z.string().trim().max(120).default(""),
+  accords: z.array(AccordSchema.extend({ name: z.string().trim().min(1).max(40), strength: z.number().min(1).max(100) })).max(15),
+  notesTop: z.array(z.string().trim().min(1).max(60)).max(30).default([]),
+  notesMiddle: z.array(z.string().trim().min(1).max(60)).max(30).default([]),
+  notesBase: z.array(z.string().trim().min(1).max(60)).max(30).default([]),
+  description: z.string().trim().max(2000).optional(),
+  imageUrl: z.string().url().startsWith("https://").optional(),
+});
+export type CustomFragranceInput = z.infer<typeof CustomFragranceSchema>;
+
 export const CandidateSchema = z.object({
   name: z.string(),
   brand: z.string(),

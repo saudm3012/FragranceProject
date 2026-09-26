@@ -17,10 +17,12 @@ export interface IntelliScentSettings {
   minScore: number; // 0-1; results below this are hidden
   extendBars: { pair: number; triple: number }; // greedy extension bars (framework: 0.6, 0.75)
   maxComboSize: 3 | 4; // framework: cap at 3, 4 only as an experimental mode
-  // Role thresholds on lateWeight (0-0.5) for 3+ scent combos. (ours - the framework names these but gives no values)
-  anchorMinLateWeight: number;
-  othersMaxLateWeight: number;
-  accentMaxStrength: number; // 1-5; accents are "a whisper, not a third anchor" (ours)
+  // 3+ scents: the anchor is relative to its combo - the most base-heavy
+  // member only counts as an anchor if its late weight beats the runner-up
+  // by at least this margin (0-0.5 scale). Otherwise there's no real anchor.
+  anchorMargin: number;
+  accentMaxStrength: number; // 1-5; accents are "a whisper, not a third anchor"
+  sprayMultiplier: number; // scales every recipe's spray counts (personalization nudges it for "faded fast")
   context: { seasons: Season[]; occasions: Occasion[]; timeOfDay: TimeOfDay[] }; // empty = no filter
 }
 
@@ -32,12 +34,12 @@ export const DEFAULT_SETTINGS: IntelliScentSettings = {
   sweetnessCapPerExtraScent: 0.3,
   strengthMismatchThreshold: 2,
   moleculeFlags: MOLECULES.map((m) => m.id),
-  minScore: 0.3,
+  minScore: 0.4,
   extendBars: { pair: 0.6, triple: 0.75 },
   maxComboSize: 3,
-  anchorMinLateWeight: 0.3,
-  othersMaxLateWeight: 0.25,
-  accentMaxStrength: 2.75,
+  anchorMargin: 0.05,
+  accentMaxStrength: 2.5,
+  sprayMultiplier: 1,
   context: { seasons: [], occasions: [], timeOfDay: [] },
 };
 
@@ -83,9 +85,9 @@ export function normalizeSettings(input: unknown): IntelliScentSettings {
       triple: num(bars.triple, d.extendBars.triple, 0, 1),
     },
     maxComboSize: s.maxComboSize === 4 ? 4 : 3,
-    anchorMinLateWeight: num(s.anchorMinLateWeight, d.anchorMinLateWeight, 0, 0.5),
-    othersMaxLateWeight: num(s.othersMaxLateWeight, d.othersMaxLateWeight, 0, 0.5),
+    anchorMargin: num(s.anchorMargin, d.anchorMargin, 0, 0.5),
     accentMaxStrength: num(s.accentMaxStrength, d.accentMaxStrength, 1, 5),
+    sprayMultiplier: num(s.sprayMultiplier, d.sprayMultiplier, 0.5, 2),
     context: {
       seasons: subset(ctx.seasons, SEASONS),
       occasions: subset(ctx.occasions, OCCASIONS.map((o) => o.id)),
@@ -224,8 +226,8 @@ export const SETTINGS_GROUPS: readonly SettingsGroup[] = [
       {
         kind: "multiselect",
         id: "context-occasions",
-        label: "Occasion",
-        description: "Occasion fit is estimated - Fragrantica has no occasion votes.",
+        label: "Occasion (estimated)",
+        description: "Occasion fit is a low-confidence estimate - Fragrantica has no occasion votes. Your wear check-ins in My Combos correct it.",
         options: OCCASIONS.map((o) => ({ value: o.id, label: o.label })),
         get: (s) => s.context.occasions,
         set: (s, v) => ({ ...s, context: { ...s.context, occasions: v as Occasion[] } }),
@@ -303,7 +305,7 @@ export const SETTINGS_GROUPS: readonly SettingsGroup[] = [
         kind: "slider",
         id: "min-score",
         label: "Minimum score",
-        description: "Hide suggestions below this score.",
+        description: "Hide suggestions below this score. Bands: Excellent 55+, Good 45-55, Worth trying 35-45 (lower it to 35 to see that whole band).",
         min: 0,
         max: 0.9,
         step: 0.05,
@@ -349,27 +351,27 @@ export const SETTINGS_GROUPS: readonly SettingsGroup[] = [
       },
       {
         kind: "slider",
-        id: "anchor-threshold",
-        label: "Anchor threshold (late weight)",
-        description: "In 3+ scent combos, the anchor must carry at least this share of its intensity into hours 4-8.",
-        min: 0.1,
-        max: 0.5,
+        id: "anchor-margin",
+        label: "Anchor margin (late weight)",
+        description: "In 3+ scent combos, the most base-heavy scent must out-last the runner-up by this much to count as the anchor.",
+        min: 0,
+        max: 0.2,
         step: 0.01,
         format: fixed(2),
-        get: (s) => s.anchorMinLateWeight,
-        set: (s, v) => ({ ...s, anchorMinLateWeight: v }),
+        get: (s) => s.anchorMargin,
+        set: (s, v) => ({ ...s, anchorMargin: v }),
       },
       {
         kind: "slider",
-        id: "others-threshold",
-        label: "Non-anchor ceiling (late weight)",
-        description: "Every other scent in a 3+ combo must stay below this, so it doesn't compete with the anchor.",
-        min: 0.1,
-        max: 0.5,
-        step: 0.01,
-        format: fixed(2),
-        get: (s) => s.othersMaxLateWeight,
-        set: (s, v) => ({ ...s, othersMaxLateWeight: v }),
+        id: "spray-multiplier",
+        label: "Spray multiplier",
+        description: "Scales every recipe's spray counts (still capped at 4 per scent).",
+        min: 0.5,
+        max: 2,
+        step: 0.1,
+        format: (v) => `${v.toFixed(1)}×`,
+        get: (s) => s.sprayMultiplier,
+        set: (s, v) => ({ ...s, sprayMultiplier: v }),
       },
       {
         kind: "toggle",

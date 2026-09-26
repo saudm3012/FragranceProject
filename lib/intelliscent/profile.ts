@@ -48,7 +48,7 @@ export interface ContextTags {
 }
 
 /** Where a profile field's value came from - shown in the UI so estimates aren't mistaken for measurements. */
-export type ProfileSource = "fragrantica-votes" | "fragrantica-accords" | "notes" | "estimated" | "manual";
+export type ProfileSource = "fragrantica-votes" | "fragrantica-accords" | "notes" | "estimated" | "checkins" | "manual";
 
 export type ProfileField =
   | "accords"

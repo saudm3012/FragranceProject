@@ -1,6 +1,6 @@
 import fuzzysort from "fuzzysort";
 import { getDb } from "@/lib/db";
-import type { Fragrance } from "@/lib/schemas";
+import { CUSTOM_URL_PREFIX, type Fragrance } from "@/lib/schemas";
 
 interface FragranceRow {
   id: number;
@@ -99,6 +99,16 @@ export async function insertStub(candidate: { name: string; brand: string; url: 
     args: [candidate.name, candidate.brand, candidate.url],
   });
   return (await getByUrl(candidate.url))!;
+}
+
+/** Fuzzy-matches user-created (custom) fragrances by name + brand. */
+export async function searchCustomByName(query: string, limit = 10): Promise<Fragrance[]> {
+  const db = getDb();
+  const result = await db.execute({ sql: "SELECT * FROM fragrances WHERE url LIKE ?", args: [`${CUSTOM_URL_PREFIX}%`] });
+  const customs = result.rows.map((r) => rowToFragrance(r as unknown as FragranceRow));
+  return fuzzysort
+    .go(query, customs.map((f) => ({ f, target: `${f.name} ${f.brand}` })), { key: "target", limit })
+    .map((r) => r.obj.f);
 }
 
 /** Every fragrance's id/name/brand - the pool fuzzy name search runs over. */

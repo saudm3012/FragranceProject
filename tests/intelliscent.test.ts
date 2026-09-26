@@ -5,8 +5,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { emptyVector, type AccordVector } from "@/lib/intelliscent/axes";
-import { buildEngineContext, buildRecipe, scoreCombo, suggest } from "@/lib/intelliscent/engine";
-import { buildPersonalModel, applyPersonalModel, type FeedbackEvent } from "@/lib/intelliscent/personalization";
+import { buildEngineContext, buildRecipe, MAX_SPRAYS, PENALTIES, scoreCombo, spraysFor, suggest } from "@/lib/intelliscent/engine";
+import { AFFINITY_TIER, DEFAULT_AFFINITY, DRAFT_CONFIDENCE } from "@/lib/intelliscent/affinity";
+import { addAnswer, applyCheckins, emptyCheckins } from "@/lib/intelliscent/checkins";
+import { buildPersonalModel, applyPersonalModel, type ComboFeedback, type FeedbackEvent } from "@/lib/intelliscent/personalization";
 import { applyOverride, lateWeight, type FragranceProfile } from "@/lib/intelliscent/profile";
 import { DEFAULT_SETTINGS, normalizeSettings, vibeOf, withVibe } from "@/lib/intelliscent/settings";
 import { deriveProfile } from "@/lib/intelliscent/derive/deriveProfile";
@@ -72,7 +74,7 @@ test("the tobacco-vanille base is the anchor and goes on first; blend descriptio
   const lb = limeBasil();
   const combo = scoreCombo([lb, tv], ctx());
   assert.equal(combo.fragranceIds[0], tv.fragranceId);
-  const recipe = buildRecipe(combo, new Map([[tv.fragranceId, tv], [lb.fragranceId, lb]]));
+  const recipe = buildRecipe(combo, new Map([[tv.fragranceId, tv], [lb.fragranceId, lb]]), DEFAULT_SETTINGS);
   assert.equal(recipe.steps[0].role, "anchor");
   assert.ok(recipe.steps[1].sprays >= recipe.steps[0].sprays, "weaker modifier gets at least as many sprays");
   assert.match(recipe.description, /citrus/, recipe.description);
@@ -117,11 +119,11 @@ test("molecule clash respects the configured molecule list", () => {
   assert.ok(!scoreCombo([a, b], ctx(trimmed)).penalties.some((p) => p.rule === "molecule"));
 });
 
-test("3 scents: two anchors hard-fail Structure; anchor + modifier + light accent passes", () => {
+test("3 scents: no clear anchor (similar shapes) hard-fails Structure; anchor + modifier + light accent passes", () => {
   const settings = DEFAULT_SETTINGS;
   const twoAnchors = scoreCombo([amberA(), amberB(), limeBasil()], ctx(settings));
   assert.equal(twoAnchors.terms.structure, 0);
-  assert.match(twoAnchors.structureNote ?? "", /both anchors/);
+  assert.match(twoAnchors.structureNote ?? "", /No clear anchor/);
 
   const accent = profile({ accords: { green: 0.9, aromatic: 0.3 }, time: [1, 0.3, 0, 0], projection: 1.5, longevity: 1.5 });
   const good = scoreCombo([tobaccoVanille(), limeBasil(), accent], ctx(settings));
@@ -150,7 +152,7 @@ test("greedy extension: only good pairs get a third scent, and only a weak accen
   const lb = limeBasil();
   const accent = profile({ accords: { rose: 0.9 }, time: [1, 0.5, 0.1, 0], projection: 1.5, longevity: 1.5 });
   const strongRose = profile({ accords: { rose: 0.9 }, time: [1, 0.5, 0.1, 0], projection: 5, longevity: 5 });
-  const results = suggest({ base: tv, pool: [lb, accent, strongRose], ctx: ctx(), limit: 20 });
+  const { results } = suggest({ base: tv, pool: [lb, accent, strongRose], ctx: ctx(), limit: 20 });
   const triples = results.filter((r) => r.fragranceIds.length === 3);
   assert.ok(triples.every((t) => !t.fragranceIds.includes(strongRose.fragranceId)), "a strong scent is never an accent");
   assert.ok(results.every((r) => r.fragranceIds.includes(tv.fragranceId)), "base mode always includes the base");
@@ -164,19 +166,24 @@ test("vibe slider round-trips and hits the framework defaults at its midpoint", 
   assert.equal(vibeOf(withVibe(DEFAULT_SETTINGS, 0.8)), 0.8);
 });
 
-test("personalization: nothing moves before 3 ratings; 3 consistent lows make a hard-avoid", () => {
-  const event = (rating: FeedbackEvent["rating"], i: number, tags: FeedbackEvent["tags"] = []): FeedbackEvent => ({
-    id: `e${i}`,
-    at: `2026-09-2${i}T00:00:00Z`,
-    rating,
-    tags,
-    snapshot: { terms: { harmony: 0.6, structure: 0.5, interest: 0.5, context: null }, cells: [{ key: "fruity|leatherAnimalic", share: 0.4, affinity: -0.5 }], size: 2 },
-  });
-  const two = buildPersonalModel([event(1, 1, ["too-sweet"]), event(1, 2, ["too-sweet"])]);
+const oneWear = (
+  comboId: string,
+  rating: FeedbackEvent["rating"],
+  day: number,
+  tags: FeedbackEvent["tags"] = [],
+  snapshot: FeedbackEvent["snapshot"] = {
+    terms: { harmony: 0.6, structure: 0.5, interest: 0.5, context: null },
+    cells: [{ key: "fruity|leatherAnimalic", share: 0.4, affinity: -0.5 }],
+    size: 2,
+  }
+): ComboFeedback => ({ comboId, events: [{ id: `${comboId}-${day}`, at: `2026-09-${10 + day}T00:00:00Z`, rating, tags, snapshot }] });
+
+test("personalization: nothing moves before 3 distinct combos; 3 consistent lows make a hard-avoid", () => {
+  const two = buildPersonalModel([oneWear("a", 1, 1, ["too-sweet"]), oneWear("b", 1, 2, ["too-sweet"])]);
   assert.deepEqual(two.hardAvoid, []);
   assert.equal(two.sweetnessCapDelta, 0);
 
-  const three = buildPersonalModel([event(1, 1, ["too-sweet"]), event(1, 2, ["too-sweet"]), event(2, 3, ["too-sweet"])]);
+  const three = buildPersonalModel([oneWear("a", 1, 1, ["too-sweet"]), oneWear("b", 1, 2, ["too-sweet"]), oneWear("c", 2, 3, ["too-sweet"])]);
   assert.deepEqual(three.hardAvoid, ["fruity|leatherAnimalic"]);
   assert.ok(three.sweetnessCapDelta < 0);
   assert.ok(applyPersonalModel(DEFAULT_SETTINGS, three).sweetnessCap < DEFAULT_SETTINGS.sweetnessCap);
@@ -185,7 +192,38 @@ test("personalization: nothing moves before 3 ratings; 3 consistent lows make a 
   const fruity = profile({ accords: { fruity: 1 }, time: [1, 0.5, 0.1, 0] });
   const leather = profile({ accords: { leatherAnimalic: 1 }, time: [1, 0.9, 0.7, 0.5] });
   const avoidCtx = buildEngineContext({ settings: DEFAULT_SETTINGS, personal: three });
-  assert.equal(suggest({ base: leather, pool: [fruity], ctx: avoidCtx, limit: 5 }).length, 0);
+  assert.equal(suggest({ base: leather, pool: [fruity], ctx: avoidCtx, limit: 5 }).results.length, 0);
+});
+
+test("personalization: repeat wears of one combo count once, but raise its confidence", () => {
+  const combo = (wears: number): ComboFeedback => ({
+    comboId: "same",
+    events: Array.from({ length: wears }, (_, i) => ({ ...oneWear("same", 1, i + 1, ["too-sweet", "faded-fast"]).events[0] })),
+  });
+  const repeated = buildPersonalModel([combo(5)]);
+  assert.equal(repeated.combosCount, 1);
+  assert.equal(repeated.wearsCount, 5);
+  assert.deepEqual(repeated.hardAvoid, [], "5 wears of one combo is one experience, not 5 samples");
+  assert.equal(repeated.sweetnessCapDelta, 0);
+  assert.equal(repeated.sprayMultiplierDelta, 0);
+
+  // Confidence: the same three combos, worn more often, move the cell further.
+  const once = buildPersonalModel(["a", "b", "c"].map((id, i) => oneWear(id, 1, i + 1)));
+  const often = buildPersonalModel(
+    ["a", "b", "c"].map((id, i) => ({ comboId: id, events: [1, 2, 3].map((d) => ({ ...oneWear(id, 1, i * 3 + d).events[0] })) }))
+  );
+  assert.ok(often.matrixOverrides["fruity|leatherAnimalic"] < once.matrixOverrides["fruity|leatherAnimalic"]);
+});
+
+test("personalization: 'faded fast' raises the spray multiplier; loving sweet-capped combos raises the cap", () => {
+  const faded = buildPersonalModel(["a", "b", "c"].map((id, i) => oneWear(id, 3, i + 1, ["faded-fast"])));
+  assert.ok(faded.sprayMultiplierDelta > 0);
+  assert.equal(faded.weightDeltas.structure, 0, "faded fast is a dosing complaint, not a Structure one");
+  assert.ok(applyPersonalModel(DEFAULT_SETTINGS, faded).sprayMultiplier > 1);
+
+  const sweetSnap = { terms: { harmony: 0.6, structure: 0.5, interest: 0.5, context: null }, cells: [], size: 2, penaltyRules: ["sweetness" as const] };
+  const sweetLover = buildPersonalModel(["a", "b", "c"].map((id, i) => oneWear(id, 5, i + 1, ["loved-it"], sweetSnap)));
+  assert.ok(sweetLover.sweetnessCapDelta > 0);
 });
 
 test("personalization works with realistic, thinly-spread profiles (not just single-cell toys)", () => {
@@ -196,19 +234,14 @@ test("personalization works with realistic, thinly-spread profiles (not just sin
   const combo = scoreCombo([a, b], ctx());
   assert.ok(combo.cells[0].share < 0.1, `top cell share is small in absolute terms (${combo.cells[0].share})`);
 
-  const events: FeedbackEvent[] = [1, 2, 3].map((i) => ({
-    id: `r${i}`,
-    at: `2026-09-2${i}T00:00:00Z`,
-    rating: 1,
-    tags: [],
-    snapshot: { terms: combo.terms, cells: combo.cells, size: 2 },
-  }));
-  const model = buildPersonalModel(events);
-  assert.ok(Object.keys(model.matrixOverrides).length > 0, "consistent ratings tune the pairings the combo leaned on");
+  // Three different combos that all lean on the same pairings, each rated 1.
+  const snapshot = { terms: combo.terms, cells: combo.cells, size: 2 };
+  const model = buildPersonalModel(["x", "y", "z"].map((id, i) => oneWear(id, 1, i + 1, [], snapshot)));
+  assert.ok(Object.keys(model.matrixOverrides).length > 0, "consistent ratings tune the pairings the combos leaned on");
   assert.ok(model.hardAvoid.length > 0, "consistent 1-star ratings create hard-avoids");
 
   const avoidCtx = buildEngineContext({ settings: DEFAULT_SETTINGS, personal: model });
-  assert.equal(suggest({ base: a, pool: [b], ctx: avoidCtx, limit: 5 }).length, 0, "the disliked combo is no longer suggested");
+  assert.equal(suggest({ base: a, pool: [b], ctx: avoidCtx, limit: 5 }).results.length, 0, "the disliked combo is no longer suggested");
 });
 
 test("hand overrides win over estimates and are marked manual", () => {
@@ -244,4 +277,108 @@ test("deriveProfile uses community votes when present and estimates otherwise", 
   const estimated = deriveProfile({ ...base, votes: null });
   assert.equal(estimated.sources.longevity, "estimated");
   assert.equal(estimated.sources.seasons, "estimated");
+});
+
+// --- Decisions from the framework author's review -----------------------------
+
+test("penalties are graduated: barely over the sweetness cap costs less than far over; clash list is flat", () => {
+  const sweet = (s: number, lw: [number, number, number, number]) => profile({ accords: { gourmand: 1 }, time: lw, sweetness: s });
+  const barely = scoreCombo([sweet(0.62, [1, 0.9, 0.8, 0.6]), sweet(0.62, [1, 0.4, 0.05, 0])], ctx()); // 1.24 vs 1.2
+  const far = scoreCombo([sweet(1, [1, 0.9, 0.8, 0.6]), sweet(1, [1, 0.4, 0.05, 0])], ctx()); // 2.0 vs 1.2
+  const amount = (c: ReturnType<typeof scoreCombo>) => c.penalties.find((p) => p.rule === "sweetness")!.amount;
+  assert.ok(amount(barely) < amount(far), `${amount(barely)} < ${amount(far)}`);
+
+  const a = tobaccoVanille();
+  const b = limeBasil();
+  const clashCtx = buildEngineContext({ settings: DEFAULT_SETTINGS, clashPairs: [[a.fragranceId, b.fragranceId]] });
+  assert.equal(scoreCombo([a, b], clashCtx).penalties.find((p) => p.rule === "clash")!.amount, PENALTIES.clash);
+});
+
+test("anchor is relative to its combo: needs a margin over the runner-up, not an absolute threshold", () => {
+  // All three sit in a narrow, fairly base-heavy band - but one clearly out-lasts the others.
+  const heavy = profile({ accords: { amberResin: 1 }, time: [1, 0.95, 0.85, 0.7] }); // late ~0.44
+  const mid = profile({ accords: { citrus: 1 }, time: [1, 0.8, 0.45, 0.25] }); // late ~0.28
+  const mid2 = profile({ accords: { rose: 1 }, time: [1, 0.8, 0.45, 0.2] }); // late ~0.27
+  const clear = scoreCombo([heavy, mid, mid2], ctx());
+  assert.ok(clear.terms.structure > 0, "a clear margin gives a real anchor");
+  assert.equal(clear.fragranceIds[0], heavy.fragranceId);
+
+  const twin = profile({ accords: { musk: 1 }, time: [1, 0.95, 0.84, 0.69] }); // within 0.05 of `heavy`
+  assert.equal(scoreCombo([heavy, twin, mid], ctx()).terms.structure, 0, "two near-equal shapes: no anchor");
+});
+
+test("the modifier is the best harmonizer with the anchor, not the loudest", () => {
+  const anchor = profile({ accords: { amberResin: 1 }, time: [1, 0.95, 0.85, 0.7] });
+  const loudClash = profile({ accords: { aquatic: 1 }, time: [1, 0.4, 0.05, 0], projection: 5, longevity: 5 });
+  const quietMatch = profile({ accords: { gourmand: 1 }, time: [1, 0.4, 0.05, 0], projection: 1.5, longevity: 1.5 });
+  const combo = scoreCombo([anchor, loudClash, quietMatch], ctx());
+  assert.deepEqual(combo.roles, ["anchor", "modifier", "accent"]);
+  assert.equal(combo.fragranceIds[1], quietMatch.fragranceId, "amber x gourmand (+0.9) beats a louder aquatic (-0.x)");
+});
+
+test("accents are judged against the anchor+modifier blend, not each member separately", () => {
+  // `echo` restates the blend (amber + citrus). Judged pairwise it looks moderately
+  // different from each member; judged against the blend it adds nothing.
+  const anchor = profile({ accords: { amberResin: 1 }, time: [1, 0.95, 0.85, 0.7] });
+  const modifier = profile({ accords: { citrus: 1 }, time: [1, 0.4, 0.05, 0] });
+  const light = { time: [1, 0.3, 0, 0] as [number, number, number, number], projection: 1.5, longevity: 1.5 };
+  const echo = profile({ accords: { amberResin: 1, citrus: 1 }, ...light });
+  const addsFacet = profile({ accords: { amberResin: 0.5, citrus: 0.5, green: 1 }, ...light });
+
+  const withEcho = scoreCombo([anchor, modifier, echo], ctx());
+  const withFacet = scoreCombo([anchor, modifier, addsFacet], ctx());
+  assert.deepEqual(withEcho.fragranceIds, [anchor.fragranceId, modifier.fragranceId, echo.fragranceId]);
+  assert.ok(withFacet.terms.interest > withEcho.terms.interest, `${withFacet.terms.interest} > ${withEcho.terms.interest}`);
+});
+
+test("sprays are projection-weighted and scale with the personal multiplier", () => {
+  const loudShort = profile({ accords: { citrus: 1 }, time: [1, 0.4, 0.05, 0], projection: 5, longevity: 1 });
+  const quietLong = profile({ accords: { musk: 1 }, time: [1, 0.9, 0.8, 0.7], projection: 1, longevity: 5 });
+  assert.ok(spraysFor(loudShort, "modifier", DEFAULT_SETTINGS) < spraysFor(quietLong, "modifier", DEFAULT_SETTINGS));
+  const more = { ...DEFAULT_SETTINGS, sprayMultiplier: 1.5 };
+  assert.ok(spraysFor(quietLong, "anchor", more) <= MAX_SPRAYS);
+  assert.ok(spraysFor(profile({ accords: { musk: 1 }, time: [1, 1, 1, 1], projection: 3, longevity: 3 }), "anchor", more) > 2);
+});
+
+test("wear check-ins outweigh the estimate, keep the curve non-increasing, and hand edits still win", () => {
+  const p = profile({ accords: { citrus: 1 }, time: [1, 0.4, 0.05, 0] });
+  let c = emptyCheckins();
+  c = addAnswer(c, { h8: true, occasion: "office" });
+  const checked = applyCheckins(p, c);
+  assert.ok(checked.time.h8 >= 0.3 && checked.time.h4 >= checked.time.h8 && checked.time.h1 >= checked.time.h4);
+  assert.equal(checked.sources.time, "checkins");
+  assert.ok(checked.context.occasions.office >= 0.75);
+  const edited = applyOverride(checked, { time: { h8: 0.05 } });
+  assert.equal(edited.time.h8, 0.05);
+  assert.equal(edited.sources.time, "manual");
+  assert.equal(applyCheckins(p, emptyCheckins()).sources.time, p.sources.time, "no answers, no change");
+});
+
+test("accord mapping: 'fresh' leans on the notes, tobacco is gourmand-first unless smoked", () => {
+  const f = (accords: Array<[string, number]>, notes: string[]): Fragrance & { id: number } => ({
+    id: 1, name: "t", brand: "t", url: "https://www.fragrantica.com/perfume/t-1.html",
+    notesTop: notes, notesMiddle: [], notesBase: [], accords: accords.map(([name, strength]) => ({ name, strength })),
+    rating: null, ratingCount: null, votes: null, perfumer: null, description: null, imageUrl: null, scrapedAt: "2026-09-25T00:00:00Z",
+  });
+  const bergamot = deriveProfile(f([["fresh", 100]], ["Bergamot", "Lemon"]));
+  assert.ok(bergamot.accords.citrus > bergamot.accords.aquatic && bergamot.accords.citrus > bergamot.accords.green);
+  const marine = deriveProfile(f([["fresh", 100]], ["Sea Notes"]));
+  assert.ok(marine.accords.aquatic > marine.accords.citrus);
+
+  const plain = deriveProfile(f([["tobacco", 100]], ["Tobacco Leaf", "Honey"]));
+  assert.ok(plain.accords.gourmand > plain.accords.smokeOud);
+  const smoked = deriveProfile(f([["tobacco", 100]], ["Birch Tar", "Tobacco"]));
+  assert.ok(smoked.accords.smokeOud > smoked.accords.gourmand);
+
+  assert.ok(deriveProfile(f([["mossy", 100]], [])).accords.leatherAnimalic > 0, "oakmoss carries a faint animalic edge");
+});
+
+test("affinity matrix tiers: doc and reviewed values exact, drafts pulled toward neutral, diagonal near-neutral", () => {
+  assert.equal(DEFAULT_AFFINITY["citrus|dryWoods"], 0.8);
+  assert.equal(AFFINITY_TIER["citrus|dryWoods"], "doc");
+  assert.equal(DEFAULT_AFFINITY["green|gourmand"], -0.15);
+  assert.equal(DEFAULT_AFFINITY["aquatic|smokeOud"], -0.4);
+  assert.equal(DEFAULT_AFFINITY["amberResin|amberResin"], 0.1);
+  assert.equal(AFFINITY_TIER["citrus|aromatic"], "draft");
+  assert.equal(DEFAULT_AFFINITY["citrus|aromatic"], 0.8 * DRAFT_CONFIDENCE);
 });

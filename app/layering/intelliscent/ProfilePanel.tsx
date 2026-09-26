@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import type { IntelliScentActionProps } from "@/app/layering/intelliscent/types";
 import { fetchProfiles } from "@/lib/client/api";
+import { applyCheckins } from "@/lib/intelliscent/checkins";
 import { setOverride } from "@/lib/client/localIntelliScent";
 import { AXES } from "@/lib/intelliscent/axes";
 import {
@@ -158,6 +159,7 @@ const SOURCE_LABELS: Record<ProfileSource, string> = {
   "fragrantica-accords": "Fragrantica accords",
   notes: "From the note list",
   estimated: "Estimated",
+  checkins: "From your wears",
   manual: "Your edit",
 };
 
@@ -170,12 +172,15 @@ export default function ProfilePanel({ base, username, engine }: IntelliScentAct
   const [error, setError] = useState<string | null>(null);
 
   const override = engine.overrides?.[String(base.id)];
+  const checkins = engine.checkins?.[String(base.id)];
   const overrideKey = JSON.stringify(override ?? {});
+  const checkinsKey = JSON.stringify(checkins ?? null);
 
   useEffect(() => {
     let cancelled = false;
     const overrides = overrideKey === "{}" ? undefined : { [String(base.id)]: JSON.parse(overrideKey) };
-    fetchProfiles({ ids: [base.id], overrides })
+    const checkinsMap = checkinsKey === "null" ? undefined : { [String(base.id)]: JSON.parse(checkinsKey) };
+    fetchProfiles({ ids: [base.id], overrides, checkins: checkinsMap })
       .then((res) => {
         if (cancelled) return;
         setEstimated(res.profiles[0]?.estimated ?? null);
@@ -186,12 +191,14 @@ export default function ProfilePanel({ base, username, engine }: IntelliScentAct
     return () => {
       cancelled = true;
     };
-  }, [base.id, overrideKey]);
+  }, [base.id, overrideKey, checkinsKey]);
 
   if (error) return <p className="error">{error}</p>;
   if (!estimated || !effective) return <p className="spinner-text">Loading profile…</p>;
 
   const valueOf = (f: Field) => draft[f.key] ?? f.get(effective);
+  // What the profile would be without hand edits (estimate + wear check-ins) - edits are measured against this.
+  const baseline = applyCheckins(estimated, checkins);
   const dirty = Object.keys(draft).length > 0;
 
   function save() {
@@ -200,7 +207,7 @@ export default function ProfilePanel({ base, username, engine }: IntelliScentAct
     const next: ProfileOverride = {};
     for (const section of SECTIONS) {
       for (const f of section.fields) {
-        const est = f.get(estimated!);
+        const est = f.get(baseline);
         const touched = f.key in draft;
         const previouslyEdited = f.get(effective!) !== est;
         if (!touched && !previouslyEdited) continue;
@@ -222,7 +229,8 @@ export default function ProfilePanel({ base, username, engine }: IntelliScentAct
     <div className="action-panel profile-panel">
       <p className="muted">
         How IntelliScent reads <strong>{base.name}</strong>. Estimates come from Fragrantica - correct anything that
-        doesn&apos;t match how it actually wears on you, and every score uses your version.
+        doesn&apos;t match how it actually wears on you, and every score uses your version. Quick check-ins
+        in My Combos (&quot;still noticeable at 4 hours?&quot;) update it too.
       </p>
       <p className="muted small">
         Late weight {lateWeight(effective).toFixed(2)} · strength {strength(effective).toFixed(1)} / 5

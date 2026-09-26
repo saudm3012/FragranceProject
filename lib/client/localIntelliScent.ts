@@ -4,6 +4,7 @@
 // personalizes results.
 
 import { readJSON, writeJSON } from "@/lib/client/userStorage";
+import { addAnswer, emptyCheckins, type CheckinAnswer, type WearCheckins } from "@/lib/intelliscent/checkins";
 import { pairKey } from "@/lib/intelliscent/engine";
 import { isEmptyOverride, sanitizeOverride, type ProfileOverride } from "@/lib/intelliscent/profile";
 import { normalizeSettings, type IntelliScentSettings } from "@/lib/intelliscent/settings";
@@ -12,6 +13,7 @@ export const SETTINGS_NAMESPACE = "intelliscent_settings";
 export const OVERRIDES_NAMESPACE = "profile_overrides";
 export const CLASH_NAMESPACE = "clash_list";
 export const PREFS_NAMESPACE = "intelliscent_prefs";
+export const CHECKINS_NAMESPACE = "wear_checkins";
 
 export interface IntelliScentPrefs {
   personalization: boolean; // apply the feedback-driven personal layer
@@ -65,4 +67,17 @@ export function removeClashes(username: string, ids: number[]): void {
     username,
     getClashPairs(username).filter(([a, b]) => !drop.has(pairKey(a, b)))
   );
+}
+
+export function getCheckins(username: string): Record<string, WearCheckins> {
+  return readJSON<Record<string, WearCheckins>>(CHECKINS_NAMESPACE, username, {});
+}
+
+/** Records one wear's yes/no answers, per fragrance. */
+export function recordCheckins(username: string, answers: Record<number, CheckinAnswer>): void {
+  const all = { ...getCheckins(username) };
+  for (const [id, answer] of Object.entries(answers)) {
+    all[id] = addAnswer(all[id] ?? emptyCheckins(), answer);
+  }
+  writeJSON(CHECKINS_NAMESPACE, username, all);
 }

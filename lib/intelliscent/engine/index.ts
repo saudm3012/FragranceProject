@@ -2,8 +2,9 @@ import { DEFAULT_AFFINITY } from "@/lib/intelliscent/affinity";
 import type { IntelliScentSettings } from "@/lib/intelliscent/settings";
 import { pairKey, type EngineContext } from "@/lib/intelliscent/engine/types";
 
-export { scoreCombo, assignRoles, PENALTY_AMOUNTS } from "@/lib/intelliscent/engine/score";
-export { suggest } from "@/lib/intelliscent/engine/suggest";
+export { scoreCombo, assignRoles, PENALTIES } from "@/lib/intelliscent/engine/score";
+export { spraysFor, sprayStrength, MAX_SPRAYS } from "@/lib/intelliscent/engine/sprays";
+export { suggest, type SuggestStats } from "@/lib/intelliscent/engine/suggest";
 export { buildRecipe, describeBlend, SKIN_TEST_NOTE } from "@/lib/intelliscent/engine/recipe";
 export * from "@/lib/intelliscent/engine/types";
 

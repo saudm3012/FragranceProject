@@ -14,9 +14,7 @@ import { AXES, AXIS_IDS, emptyVector, type AccordVector, type AxisId } from "@/l
 import {
   ACCORD_SWEETNESS,
   ACCORD_TO_AXES,
-  CREAMY_WOOD_NOTES,
-  DEFAULT_CREAMY_SHARE,
-  DRY_WOOD_NOTES,
+  CONTEXTUAL_ACCORDS,
   LONGEVITY_LEVELS,
   MOLECULE_SIGNALS,
   SILLAGE_LEVELS,
@@ -88,21 +86,12 @@ function orCombine(current: number, signal: number): number {
 
 function buildAccordVector(f: Fragrance): { vector: AccordVector; unmapped: string[] } {
   const notes = [...f.notesTop, ...f.notesMiddle, ...f.notesBase].map((n) => n.toLowerCase());
-  const creamyHits = notes.filter((n) => CREAMY_WOOD_NOTES.some((k) => n.includes(k))).length;
-  const dryHits = notes.filter((n) => DRY_WOOD_NOTES.some((k) => n.includes(k))).length;
-  const creamyShare = creamyHits + dryHits === 0 ? DEFAULT_CREAMY_SHARE : creamyHits / (creamyHits + dryHits);
-
   const vector = emptyVector();
   const unmapped: string[] = [];
   for (const accord of f.accords) {
     const name = accord.name.toLowerCase().trim();
     const presence = accord.strength / 100;
-    if (name === "woody") {
-      vector.dryWoods = orCombine(vector.dryWoods, presence * (1 - creamyShare));
-      vector.creamyWoods = orCombine(vector.creamyWoods, presence * creamyShare);
-      continue;
-    }
-    const weights = ACCORD_TO_AXES[name];
+    const weights = CONTEXTUAL_ACCORDS[name]?.(notes) ?? ACCORD_TO_AXES[name];
     if (!weights) {
       unmapped.push(accord.name);
       continue;

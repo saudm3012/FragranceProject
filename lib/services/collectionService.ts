@@ -1,6 +1,7 @@
 import { fetchMany } from "@/lib/scraping/fetch";
 import { parseFragrancePage } from "@/lib/scraping/parse";
 import * as fragranceRepository from "@/lib/fragranceRepository";
+import { isCustom } from "@/lib/schemas";
 
 /**
  * Re-fetches + re-parses the given fragrances (by id), with bounded
@@ -12,7 +13,8 @@ import * as fragranceRepository from "@/lib/fragranceRepository";
  * user-triggered action, not a crawl.
  */
 export async function refresh(fragranceIds: number[]): Promise<{ refreshed: number; failed: number }> {
-  const fragrances = await fragranceRepository.getByIds(fragranceIds);
+  // Custom fragrances have no Fragrantica page to re-fetch.
+  const fragrances = (await fragranceRepository.getByIds(fragranceIds)).filter((f) => !isCustom(f));
   const results = await fetchMany(
     fragrances.map((f) => f.url),
     4

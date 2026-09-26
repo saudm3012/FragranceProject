@@ -12,6 +12,7 @@ import {
 } from "@/lib/client/localCollection";
 import { COMBOS_NAMESPACE, normalizeCombo, type Combo } from "@/lib/client/localCombos";
 import {
+  CHECKINS_NAMESPACE,
   CLASH_NAMESPACE,
   DEFAULT_PREFS,
   OVERRIDES_NAMESPACE,
@@ -24,6 +25,7 @@ import {
 import { readRaw, STORE_CHANGED_EVENT } from "@/lib/client/userStorage";
 import * as fragranceCache from "@/lib/client/fragranceCache";
 import { applyPersonalModel, buildPersonalModel, type PersonalModel } from "@/lib/intelliscent/personalization";
+import type { WearCheckins } from "@/lib/intelliscent/checkins";
 import type { ProfileOverride } from "@/lib/intelliscent/profile";
 import { normalizeSettings, type IntelliScentSettings } from "@/lib/intelliscent/settings";
 import type { EnginePayload } from "@/lib/intelliscent/types";
@@ -115,6 +117,11 @@ export function useProfileOverrides(username: string | null | undefined): Record
   return useMemo(() => parseOr<Record<string, ProfileOverride>>(raw, {}), [raw]);
 }
 
+export function useCheckins(username: string | null | undefined): Record<string, WearCheckins> {
+  const raw = useStoreRaw(CHECKINS_NAMESPACE, username);
+  return useMemo(() => parseOr<Record<string, WearCheckins>>(raw, {}), [raw]);
+}
+
 export function useClashPairs(username: string | null | undefined): Array<[number, number]> {
   const raw = useStoreRaw(CLASH_NAMESPACE, username);
   return useMemo(() => parseOr<Array<[number, number]>>(raw, []), [raw]);
@@ -123,7 +130,7 @@ export function useClashPairs(username: string | null | undefined): Array<[numbe
 /** The personal preference layer, rebuilt from every wear logged in the combo journal. */
 export function usePersonalModel(username: string | null | undefined): PersonalModel {
   const combos = useCombos(username);
-  return useMemo(() => buildPersonalModel(combos.flatMap((c) => c.feedback)), [combos]);
+  return useMemo(() => buildPersonalModel(combos.map((c) => ({ comboId: c.id, events: c.feedback }))), [combos]);
 }
 
 /**
@@ -144,12 +151,13 @@ export function useEnginePayload(username: string | null | undefined): {
   const personal = usePersonalModel(username);
   const overrides = useProfileOverrides(username);
   const clashPairs = useClashPairs(username);
+  const checkins = useCheckins(username);
   const payload = useMemo<EnginePayload>(
     () =>
       prefs.personalization
-        ? { settings: applyPersonalModel(settings, personal), personal, overrides, clashPairs }
-        : { settings, personal: null, overrides, clashPairs },
-    [settings, prefs.personalization, personal, overrides, clashPairs]
+        ? { settings: applyPersonalModel(settings, personal), personal, overrides, checkins, clashPairs }
+        : { settings, personal: null, overrides, checkins, clashPairs },
+    [settings, prefs.personalization, personal, overrides, checkins, clashPairs]
   );
   return { payload, settings, setSettings: updateSettings, prefs, setPrefs: updatePrefs, personal };
 }

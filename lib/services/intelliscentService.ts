@@ -4,6 +4,7 @@
 // in the request - nothing user-specific is stored server-side yet.
 
 import * as fragranceRepository from "@/lib/fragranceRepository";
+import { applyCheckins } from "@/lib/intelliscent/checkins";
 import { CURATED_CLASHES, fragranticaPath } from "@/lib/intelliscent/clashList";
 import { deriveProfile } from "@/lib/intelliscent/derive/deriveProfile";
 import {
@@ -12,8 +13,9 @@ import {
   scoreCombo,
   suggest as engineSuggest,
   type PersonalLayer,
+  type SuggestStats,
 } from "@/lib/intelliscent/engine";
-import { applyOverride, sanitizeOverride, type FragranceProfile, type ProfileOverride } from "@/lib/intelliscent/profile";
+import { applyOverride, sanitizeOverride, type FragranceProfile } from "@/lib/intelliscent/profile";
 import { normalizeSettings } from "@/lib/intelliscent/settings";
 import type {
   ComboResult,
@@ -57,9 +59,11 @@ function estimated(f: StoredFragrance): FragranceProfile {
   return profile;
 }
 
-function effective(f: StoredFragrance, overrides: EnginePayload["overrides"]): FragranceProfile {
-  const override = overrides?.[String(f.id)];
-  return override ? applyOverride(estimated(f), sanitizeOverride(override)) : estimated(f);
+/** Estimate -> the user's post-wear check-ins -> their hand edits (each layer wins over the one before). */
+function effective(f: StoredFragrance, input: Pick<EnginePayload, "overrides" | "checkins">): FragranceProfile {
+  const withCheckins = applyCheckins(estimated(f), input.checkins?.[String(f.id)]);
+  const override = input.overrides?.[String(f.id)];
+  return override ? applyOverride(withCheckins, sanitizeOverride(override)) : withCheckins;
 }
 
 function stored(fragrances: Fragrance[]): StoredFragrance[] {
@@ -101,6 +105,24 @@ function nameLookup(fragrances: StoredFragrance[]) {
   return (p: FragranceProfile) => names.get(p.fragranceId) ?? `#${p.fragranceId}`;
 }
 
+const SWEET_POOL_SHARE = 0.5;
+
+/**
+ * Pool-level observations worth telling the user. A sweetness cap that
+ * fires on most pairs isn't a bug to tune away - it's telling the user
+ * their bottles mostly need a non-sweet partner rather than each other.
+ */
+function insightsFrom(stats: SuggestStats): string[] {
+  const insights: string[] = [];
+  if (stats.pairsScored >= 4 && stats.sweetnessTripped / stats.pairsScored >= SWEET_POOL_SHARE) {
+    const pct = Math.round((100 * stats.sweetnessTripped) / stats.pairsScored);
+    insights.push(
+      `${pct}% of these pairings are too sweet together - these bottles mostly want a non-sweet partner (citrus, green, aromatic or woody) rather than each other.`
+    );
+  }
+  return insights;
+}
+
 export async function suggest(input: SuggestRequest): Promise<SuggestResponse> {
   let base: StoredFragrance | null = null;
   if (input.baseId != null) {
@@ -120,10 +142,10 @@ export async function suggest(input: SuggestRequest): Promise<SuggestResponse> {
 
   const ctx = engineContext(input, everything);
   const nameOf = nameLookup(everything);
-  const profiles = new Map(everything.map((f) => [f.id, effective(f, input.overrides)]));
+  const profiles = new Map(everything.map((f) => [f.id, effective(f, input)]));
 
   const limit = Math.min(MAX_LIMIT, Math.max(1, input.limit ?? DEFAULT_LIMIT));
-  const combos = engineSuggest({
+  const { results: combos, stats } = engineSuggest({
     base: base ? profiles.get(base.id)! : null,
     pool: pool.map((f) => profiles.get(f.id)!),
     ctx,
@@ -131,12 +153,13 @@ export async function suggest(input: SuggestRequest): Promise<SuggestResponse> {
     nameOf,
   });
 
-  const results: ComboResult[] = combos.map((c) => ({ ...c, recipe: buildRecipe(c, profiles) }));
+  const results: ComboResult[] = combos.map((c) => ({ ...c, recipe: buildRecipe(c, profiles, ctx.settings) }));
   const referenced = new Set(results.flatMap((r) => r.fragranceIds));
   return {
     poolSize: pool.length,
     results,
     fragrances: everything.filter((f) => referenced.has(f.id)),
+    insights: insightsFrom(stats),
   };
 }
 
@@ -161,9 +184,9 @@ export async function rate(input: RateRequest): Promise<RateResponse> {
   if (stubs.length > 0) throw stillLoading(stubs);
 
   const ctx = engineContext(input, fragrances);
-  const profiles = new Map(fragrances.map((f) => [f.id, effective(f, input.overrides)]));
+  const profiles = new Map(fragrances.map((f) => [f.id, effective(f, input)]));
   const combo = scoreCombo(ids.map((id) => profiles.get(id)!), ctx, nameLookup(fragrances));
-  return { result: { ...combo, recipe: buildRecipe(combo, profiles) }, fragrances };
+  return { result: { ...combo, recipe: buildRecipe(combo, profiles, ctx.settings) }, fragrances };
 }
 
 export async function profiles(input: ProfilesRequest): Promise<ProfilesResponse> {
@@ -171,7 +194,7 @@ export async function profiles(input: ProfilesRequest): Promise<ProfilesResponse
   return {
     profiles: fragrances.map((f) => ({
       estimated: estimated(f),
-      effective: effective(f, input.overrides as Record<string, ProfileOverride> | undefined),
+      effective: effective(f, input),
     })),
   };
 }

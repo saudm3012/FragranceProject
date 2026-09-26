@@ -162,9 +162,9 @@ export default function SettingsPanel({
             <span>Learn from my combo ratings</span>
           </label>
           <p className="muted param-description">
-            {personal.ratingsCount === 0
-              ? `Log how combos wear in My Combos. Adjustments kick in after ${MIN_SAMPLES} related ratings.`
-              : `${personal.ratingsCount} rating${personal.ratingsCount === 1 ? "" : "s"} logged.`}
+            {personal.wearsCount === 0
+              ? `Log how combos wear in My Combos. Adjustments kick in after ${MIN_SAMPLES} different combos agree - repeat wears of one combo count once.`
+              : `${personal.wearsCount} wear${personal.wearsCount === 1 ? "" : "s"} logged across ${personal.combosCount} combo${personal.combosCount === 1 ? "" : "s"}.`}
           </p>
           {prefs.personalization && personal.adjustments.length > 0 && (
             <ul className="personal-adjustments">

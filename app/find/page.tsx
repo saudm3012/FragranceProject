@@ -8,7 +8,8 @@ import { isAbortError, quickAdd, resolveFragrance, searchFragrances } from "@/li
 import * as fragranceCache from "@/lib/client/fragranceCache";
 import { useCollectionIds, useFragrances, useUsername } from "@/lib/client/hooks";
 import { addToCollection } from "@/lib/client/localCollection";
-import { isStub, type Candidate, type Fragrance, type SearchResponse } from "@/lib/schemas";
+import CustomFragranceForm from "@/app/find/CustomFragranceForm";
+import { isCustom, isStub, type Candidate, type Fragrance, type SearchResponse } from "@/lib/schemas";
 
 export default function FindFragrancePage() {
   const [query, setQuery] = useState("");
@@ -29,6 +30,8 @@ export default function FindFragrancePage() {
   const [detailsError, setDetailsError] = useState<{ url: string; message: string } | null>(null);
   const [learnedIds, setLearnedIds] = useState<Record<string, number>>({}); // url -> stored id, for results that weren't stored when searched
   const detailsRequest = useRef<AbortController | null>(null);
+  const [showCustomForm, setShowCustomForm] = useState(false);
+  const [created, setCreated] = useState<Fragrance[]>([]); // custom fragrances made this session, shown as results
 
   useEffect(() => () => detailsRequest.current?.abort(), []);
 
@@ -53,14 +56,17 @@ export default function FindFragrancePage() {
     }
     setOpenUrl(candidate.url);
 
-    const id = idFor(candidate);
-    const cached = id != null ? fragranceCache.getCached(id) : undefined;
-    if (cached && !isStub(cached)) return; // details already in hand
-
     const controller = new AbortController();
     detailsRequest.current = controller;
     setLoadingUrl(candidate.url);
     try {
+      // Already stored (or custom)? Read it from the database - no Fragrantica round trip.
+      const id = idFor(candidate);
+      if (id != null) {
+        await fragranceCache.ensure([id]);
+        const cached = fragranceCache.getCached(id);
+        if (controller.signal.aborted || (cached && !isStub(cached)) || isCustom(candidate)) return;
+      }
       const f = await resolveFragrance(candidate.url, controller.signal);
       fragranceCache.prime([f]);
       if (f.id != null) learnId(candidate.url, f.id);
@@ -119,6 +125,49 @@ export default function FindFragrancePage() {
           Search
         </button>
       </form>
+
+      {!showCustomForm && (
+        <p className="muted small">
+          Not on Fragrantica, or a blend of your own?{" "}
+          <button type="button" className="link-button" onClick={() => setShowCustomForm(true)}>
+            Create a custom fragrance
+          </button>
+        </p>
+      )}
+      {showCustomForm && (
+        <CustomFragranceForm
+          initialName={query.trim()}
+          onCancel={() => setShowCustomForm(false)}
+          onCreated={(f) => {
+            fragranceCache.prime([f]);
+            setCreated((list) => [f, ...list]);
+            setShowCustomForm(false);
+          }}
+        />
+      )}
+
+      {created.length > 0 && (
+        <div className="results-section">
+          <h2>Created</h2>
+          {created.map((f) => {
+            const c: Candidate = { name: f.name, brand: f.brand, url: f.url, id: f.id ?? null };
+            return (
+              <ResultRow
+                key={f.url}
+                candidate={c}
+                id={c.id ?? null}
+                expanded={openUrl === c.url}
+                loadingDetails={loadingUrl === c.url}
+                detailsError={detailsError?.url === c.url ? detailsError.message : null}
+                onToggle={() => void toggle(c)}
+                onLearnId={() => {}}
+                username={username ?? null}
+                collectionIds={collectionIds}
+              />
+            );
+          })}
+        </div>
+      )}
 
       {searching && <p className="spinner-text">Searching…</p>}
       {error && <p className="error">{error}</p>}
@@ -227,6 +276,7 @@ function ResultRow({
             <strong>
               {candidate.name}
               {inCollection && <InCollectionIcon />}
+              {isCustom(candidate) && <span className="custom-tag">Custom</span>}
             </strong>
             <span className="muted result-row-brand">{candidate.brand}</span>
           </span>

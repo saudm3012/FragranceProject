@@ -2,7 +2,16 @@ import { fetchPage } from "@/lib/scraping/fetch";
 import { parseFragrancePage } from "@/lib/scraping/parse";
 import { searchLive } from "@/lib/scraping/search";
 import * as fragranceRepository from "@/lib/fragranceRepository";
-import { isStub, type Candidate, type Fragrance, type SearchResponse } from "@/lib/schemas";
+import {
+  CUSTOM_URL_PREFIX,
+  isStub,
+  type Candidate,
+  type CustomFragranceInput,
+  type Fragrance,
+  type SearchResponse,
+} from "@/lib/schemas";
+
+export const SEARCH_PAGE_SIZE = 20;
 
 /**
  * Resolves a free-text name to ranked candidates. Always asks Fragrantica's
@@ -12,15 +21,18 @@ import { isStub, type Candidate, type Fragrance, type SearchResponse } from "@/l
  * fallback for when the live search is unreachable. Always returns a list;
  * callers decide how to handle 0/1/many results, never auto-picks one.
  */
-export const SEARCH_PAGE_SIZE = 20;
-
 export async function search(query: string, page = 0): Promise<SearchResponse> {
   try {
     const live = await searchLive(query, SEARCH_PAGE_SIZE, page);
     const ids = await fragranceRepository.getIdsByUrls(live.candidates.map((c) => c.url));
+    // Custom fragrances aren't on Fragrantica, so matching ones lead the first page.
+    const customs = page === 0 ? await fragranceRepository.searchCustomByName(query, 5) : [];
     return {
       source: "live_search",
-      candidates: live.candidates.map((c) => ({ ...c, id: ids.get(c.url) ?? null })),
+      candidates: [
+        ...customs.map((f) => ({ name: f.name, brand: f.brand, url: f.url, id: f.id ?? null })),
+        ...live.candidates.map((c) => ({ ...c, id: ids.get(c.url) ?? null })),
+      ],
       page: live.page,
       totalPages: live.totalPages,
       totalHits: live.totalHits,
@@ -68,6 +80,28 @@ export async function lookupByUrl(url: string): Promise<Fragrance> {
 export async function ensureStored(candidate: Candidate): Promise<{ fragrance: Fragrance; needsDetails: boolean }> {
   const fragrance = await fragranceRepository.insertStub(candidate);
   return { fragrance, needsDetails: isStub(fragrance) };
+}
+
+/** Stores a user-created fragrance (nothing to scrape - its details are what the user entered). */
+export async function createCustom(input: CustomFragranceInput): Promise<Fragrance> {
+  const fragrance: Omit<Fragrance, "id"> = {
+    name: input.name,
+    brand: input.brand || "Custom",
+    url: `${CUSTOM_URL_PREFIX}${crypto.randomUUID()}`,
+    notesTop: input.notesTop,
+    notesMiddle: input.notesMiddle,
+    notesBase: input.notesBase,
+    accords: [...input.accords].sort((a, b) => b.strength - a.strength),
+    rating: null,
+    ratingCount: null,
+    votes: null,
+    perfumer: null,
+    description: input.description || null,
+    imageUrl: input.imageUrl ?? null,
+    scrapedAt: new Date().toISOString(),
+  };
+  const id = await fragranceRepository.upsert(fragrance);
+  return { ...fragrance, id };
 }
 
 export async function lookupById(id: number): Promise<Fragrance | null> {

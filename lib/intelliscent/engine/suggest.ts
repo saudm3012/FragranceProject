@@ -34,7 +34,12 @@ function combinedPresence(members: FragranceProfile[]): AccordVector {
   return v;
 }
 
-export function suggest({ base, pool, ctx, limit, nameOf }: SuggestInput): ScoredCombo[] {
+export interface SuggestStats {
+  pairsScored: number;
+  sweetnessTripped: number; // pairs that hit the sweetness cap - a signal about the collection, not just one combo
+}
+
+export function suggest({ base, pool, ctx, limit, nameOf }: SuggestInput): { results: ScoredCombo[]; stats: SuggestStats } {
   const s = ctx.settings;
   const byId = new Map(pool.map((p) => [p.fragranceId, p]));
   if (base) byId.set(base.fragranceId, base);
@@ -80,8 +85,14 @@ export function suggest({ base, pool, ctx, limit, nameOf }: SuggestInput): Score
     if (s.maxComboSize >= 4) extend(triples, s.extendBars.triple);
   }
 
-  return [...results.values()]
-    .filter((c) => c.score >= s.minScore)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, limit);
+  return {
+    results: [...results.values()]
+      .filter((c) => c.score >= s.minScore)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, limit),
+    stats: {
+      pairsScored: pairs.length,
+      sweetnessTripped: pairs.filter((p) => p.penalties.some((x) => x.rule === "sweetness")).length,
+    },
+  };
 }

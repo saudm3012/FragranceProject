@@ -52,27 +52,26 @@ export function structurePair(a: FragranceProfile, b: FragranceProfile): number 
 }
 
 /**
- * Framework, 3+ scents: "exactly one member above a base-heavy threshold
- * (the anchor) and every other member below a not-competing threshold".
- * Two anchors (or none) hard-fails. When the roles hold, the score is the
- * average anchor-to-member late-weight gap, on the same scale as pairs.
+ * Framework, 3+ scents: exactly one anchor, everything else not competing
+ * with it. "Anchor" is relative to the combo, not a fixed property of a
+ * bottle: the most base-heavy member is the anchor only if its late weight
+ * beats the runner-up's by `anchorMargin`. If not, the members share too
+ * similar a shape to have a real anchor and Structure hard-fails. When it
+ * holds, the score is the average anchor-to-member gap, on the pair scale.
  */
 export function structureSet(
   ordered: FragranceProfile[], // role order, anchor first
   s: IntelliScentSettings,
   nameOf: (p: FragranceProfile) => string
 ): { value: number; note: string | null } {
-  const anchors = ordered.filter((p) => lateWeight(p) >= s.anchorMinLateWeight);
-  if (anchors.length > 1) {
-    return { value: 0, note: `${anchors.map(nameOf).join(" and ")} are both anchors - they'll muddy each other.` };
-  }
-  if (anchors.length === 0) {
-    return { value: 0, note: "No scent is base-heavy enough to anchor - the combo will fade fast." };
-  }
   const [anchor, ...rest] = ordered;
-  const competing = rest.filter((p) => lateWeight(p) > s.othersMaxLateWeight);
-  if (competing.length > 0) {
-    return { value: 0, note: `${competing.map(nameOf).join(" and ")} competes with the anchor for the drydown.` };
+  const runnerUp = rest.reduce((best, p) => (lateWeight(p) > lateWeight(best) ? p : best), rest[0]);
+  const margin = lateWeight(anchor) - lateWeight(runnerUp);
+  if (margin < s.anchorMargin) {
+    return {
+      value: 0,
+      note: `No clear anchor: ${nameOf(anchor)} and ${nameOf(runnerUp)} fade on a similar curve, so they'll compete for the drydown.`,
+    };
   }
   const gaps = rest.map((p) => clamp01((lateWeight(anchor) - lateWeight(p)) / MAX_LATE_GAP));
   return { value: gaps.reduce((x, y) => x + y, 0) / gaps.length, note: null };

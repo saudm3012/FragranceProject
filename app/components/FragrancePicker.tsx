@@ -5,7 +5,7 @@ import FragranceChip from "@/app/components/FragranceChip";
 import Pager from "@/app/components/Pager";
 import { isAbortError, resolveFragrance, searchFragrances } from "@/lib/client/api";
 import * as fragranceCache from "@/lib/client/fragranceCache";
-import type { Candidate, Fragrance, SearchResponse } from "@/lib/schemas";
+import { isStub, type Candidate, type Fragrance, type SearchResponse } from "@/lib/schemas";
 
 type Source = "collection" | "search";
 
@@ -68,6 +68,13 @@ export default function FragrancePicker({
     setResolvingUrl(candidate.url);
     setError(null);
     try {
+      // Stored (or custom) already? Use the database record; only unknown ones go through Fragrantica.
+      if (candidate.id != null) {
+        await fragranceCache.ensure([candidate.id]);
+        const cached = fragranceCache.getCached(candidate.id);
+        if (controller.signal.aborted) return;
+        if (cached && !isStub(cached)) return onPick(cached);
+      }
       const fragrance = await resolveFragrance(candidate.url, controller.signal);
       fragranceCache.prime([fragrance]);
       onPick(fragrance);

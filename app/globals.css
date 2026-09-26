@@ -444,25 +444,31 @@ button.chip-main:hover {
   white-space: nowrap;
 }
 
-.score-badge[data-band="high"] {
-  background: rgba(46, 160, 67, 0.15);
+.score-badge[data-band="excellent"] {
+  background: rgba(46, 160, 67, 0.18);
+  color: #1f6f2e;
+}
+
+.score-badge[data-band="good"] {
+  background: rgba(46, 160, 67, 0.1);
   color: #2e7d32;
 }
 
-.score-badge[data-band="mid"] {
+.score-badge[data-band="try"] {
   background: rgba(210, 153, 34, 0.18);
   color: #9a6700;
 }
 
-.score-badge[data-band="low"] {
+.score-badge[data-band="risky"] {
   background: rgba(207, 34, 46, 0.14);
   color: #c62828;
 }
 
 @media (prefers-color-scheme: dark) {
-  .score-badge[data-band="high"] { color: #6fdd8b; }
-  .score-badge[data-band="mid"] { color: #e3b341; }
-  .score-badge[data-band="low"] { color: #ff7b72; }
+  .score-badge[data-band="excellent"] { color: #7ee2a0; }
+  .score-badge[data-band="good"] { color: #6fdd8b; }
+  .score-badge[data-band="try"] { color: #e3b341; }
+  .score-badge[data-band="risky"] { color: #ff7b72; }
   .in-collection-icon { color: #e3b341; }
 }
 
@@ -974,4 +980,100 @@ details.settings-group > summary {
 
 .results-section {
   scroll-margin-top: 1rem;
+}
+
+/* Result bands + insights (SuggestionsPanel.tsx) */
+
+.band-heading {
+  font-size: 0.95rem;
+  margin: 1rem 0 0.5rem;
+}
+
+details.band-group > summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.95rem;
+  margin: 1rem 0 0.5rem;
+}
+
+.insight {
+  border-left: 3px solid #d29922;
+  background: rgba(210, 153, 34, 0.08);
+  padding: 0.5rem 0.75rem;
+  border-radius: 0 6px 6px 0;
+  font-size: 0.85rem;
+  margin-bottom: 0.75rem;
+}
+
+/* Wear check-ins (FeedbackForm.tsx) */
+
+.checkins {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: 100%;
+}
+
+.checkin-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.75rem;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid rgba(128, 128, 128, 0.12);
+}
+
+.checkin-question {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.source-tag.source-checkins {
+  background: rgba(130, 80, 223, 0.16);
+}
+
+/* Custom fragrances (CustomFragranceForm.tsx) */
+
+.custom-tag {
+  display: inline-block;
+  margin-left: 0.4rem;
+  padding: 0.05rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 500;
+  background: rgba(47, 129, 247, 0.16);
+  vertical-align: middle;
+}
+
+.custom-form .field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin: 0.75rem 0;
+  border: none;
+  font-size: 0.9rem;
+}
+
+.custom-form legend {
+  font-size: 0.9rem;
+  margin-bottom: 0.3rem;
+}
+
+.accord-edit-row {
+  display: grid;
+  grid-template-columns: 7rem 1fr 2.5rem auto;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.accord-add-row {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.4rem;
+}
+
+.accord-add-row select {
+  flex: 1;
 }

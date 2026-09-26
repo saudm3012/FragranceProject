@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import NavLinks from "@/app/components/NavLinks";
-import { isStub, type Fragrance } from "@/lib/schemas";
+import { isCustom, isStub, type Fragrance } from "@/lib/schemas";
 
 type SortKey = "name" | "brand" | "rating" | "ratingCount" | "scrapedAt";
 type SortDir = "asc" | "desc";
@@ -99,9 +99,15 @@ export default function DbBrowsePage() {
               {visible.map((f) => (
                 <tr key={f.id}>
                   <td style={tdStyle}>
-                    <a href={f.url} target="_blank" rel="noopener noreferrer">
-                      {f.name}
-                    </a>
+                    {isCustom(f) ? (
+                      <>
+                        {f.name} <span className="custom-tag">Custom</span>
+                      </>
+                    ) : (
+                      <a href={f.url} target="_blank" rel="noopener noreferrer">
+                        {f.name}
+                      </a>
+                    )}
                   </td>
                   <td style={tdStyle}>{f.brand}</td>
                   <td style={tdStyle}>{f.rating != null ? f.rating.toFixed(2) : "—"}</td>

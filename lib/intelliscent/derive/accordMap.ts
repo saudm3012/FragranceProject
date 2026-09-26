@@ -1,9 +1,9 @@
 // Translation tables from Fragrantica's data to the framework's profile.
 // Fragrantica has ~70 free-form accords; the framework has 17 fixed axes.
 // Each Fragrantica accord spreads over one or more axes (weights sum to 1).
-// "woody" is special-cased in deriveProfile.ts: Fragrantica doesn't
-// distinguish dry from creamy woods, so the notes decide the split.
-// Accords not listed here are ignored and reported as unmapped.
+// A few accords mean different things on different fragrances; those are
+// CONTEXTUAL_ACCORDS below, resolved from the fragrance's own notes.
+// Accords not listed anywhere are ignored and reported as unmapped.
 
 import type { AxisId } from "@/lib/intelliscent/axes";
 import type { MoleculeId } from "@/lib/intelliscent/profile";
@@ -11,9 +11,8 @@ import type { MoleculeId } from "@/lib/intelliscent/profile";
 type AxisWeights = Partial<Record<AxisId, number>>;
 
 export const ACCORD_TO_AXES: Record<string, AxisWeights> = {
-  // citrus / fresh
+  // citrus
   citrus: { citrus: 1 },
-  fresh: { citrus: 0.35, green: 0.3, aquatic: 0.35 },
   sour: { citrus: 0.5, fruity: 0.5 },
   // green / aromatic
   green: { green: 1 },
@@ -25,7 +24,7 @@ export const ACCORD_TO_AXES: Record<string, AxisWeights> = {
   conifer: { green: 0.5, dryWoods: 0.5 },
   terpenic: { green: 0.5, citrus: 0.2, dryWoods: 0.3 },
   bitter: { green: 0.6, dryWoods: 0.4 },
-  mossy: { green: 0.5, dryWoods: 0.5 },
+  mossy: { green: 0.45, dryWoods: 0.4, leatherAnimalic: 0.15 }, // oakmoss carries a faint animalic edge
   earthy: { dryWoods: 0.6, green: 0.4 },
   // aquatic
   aquatic: { aquatic: 1 },
@@ -81,13 +80,53 @@ export const ACCORD_TO_AXES: Record<string, AxisWeights> = {
   animalic: { leatherAnimalic: 1 },
   smoky: { smokeOud: 1 },
   oud: { smokeOud: 1 },
-  tobacco: { smokeOud: 0.5, gourmand: 0.3, warmSpice: 0.2 },
 };
 
-// Notes that decide how Fragrantica's generic "woody" accord splits.
-export const CREAMY_WOOD_NOTES = ["sandalwood", "cashmere", "cashmeran", "guaiac", "coconut", "tonka", "cream"];
-export const DRY_WOOD_NOTES = ["cedar", "vetiver", "cypress", "birch", "pine", "papyrus", "hinoki", "oakmoss", "fir", "juniper"];
-export const DEFAULT_CREAMY_SHARE = 0.35; // when the notes say nothing either way
+// --- Accords resolved per fragrance ------------------------------------------
+// `notes` is the fragrance's whole note list, lowercased.
+
+const hits = (notes: string[], keywords: string[]) =>
+  notes.filter((n) => keywords.some((k) => n.includes(k))).length;
+
+/**
+ * Splits weight across families in proportion to note evidence, with a
+ * small prior so a family with no evidence still gets a little. With no
+ * evidence at all, the split is even.
+ */
+function leanByNotes(notes: string[], families: Array<[AxisId, string[]]>, prior = 0.5): AxisWeights {
+  const scores = families.map(([axisId, keywords]) => [axisId, prior + hits(notes, keywords)] as const);
+  const total = scores.reduce((sum, [, s]) => sum + s, 0);
+  return Object.fromEntries(scores.map(([axisId, s]) => [axisId, s / total]));
+}
+
+const CREAMY_WOOD_NOTES = ["sandalwood", "cashmere", "cashmeran", "guaiac", "coconut", "tonka", "cream"];
+const DRY_WOOD_NOTES = ["cedar", "vetiver", "cypress", "birch", "pine", "papyrus", "hinoki", "oakmoss", "fir", "juniper"];
+const SMOKED_TOBACCO_NOTES = ["birch tar", "tar", "cade", "smoke", "smoky", "burnt", "incense"];
+
+export const CONTEXTUAL_ACCORDS: Record<string, (notes: string[]) => AxisWeights> = {
+  // Fragrantica has one "woody"; the framework splits dry (cedar, vetiver) from creamy (sandalwood).
+  woody: (notes) =>
+    hits(notes, CREAMY_WOOD_NOTES) + hits(notes, DRY_WOOD_NOTES) === 0
+      ? { dryWoods: 0.65, creamyWoods: 0.35 }
+      : leanByNotes(notes, [["dryWoods", DRY_WOOD_NOTES], ["creamyWoods", CREAMY_WOOD_NOTES]], 0),
+  // "Fresh" is used too loosely to split evenly - lean toward what the notes actually show.
+  fresh: (notes) =>
+    leanByNotes(notes, [
+      ["citrus", ["bergamot", "lemon", "lime", "grapefruit", "mandarin", "orange", "citrus", "yuzu", "petitgrain"]],
+      ["aquatic", ["sea", "marine", "water", "calone", "ozon", "salt", "aquatic", "rain"]],
+      ["green", ["grass", "violet leaf", "green", "leaf", "galbanum", "mint", "tea", "cucumber"]],
+    ]),
+  // Straight tobacco is honeyed and hay-like (more Chergui than campfire); only smoked styles lead with smoke.
+  tobacco: (notes) =>
+    hits(notes, SMOKED_TOBACCO_NOTES) > 0
+      ? { smokeOud: 0.5, gourmand: 0.25, warmSpice: 0.25 }
+      : { gourmand: 0.5, warmSpice: 0.3, smokeOud: 0.2 },
+};
+
+/** Every accord name IntelliScent understands - what a custom fragrance can be described with. */
+export const KNOWN_ACCORDS: readonly string[] = [
+  ...new Set([...Object.keys(ACCORD_TO_AXES), ...Object.keys(CONTEXTUAL_ACCORDS)]),
+].sort();
 
 /**
  * Direct sweetness signal per Fragrantica accord (0..1). Community-voted

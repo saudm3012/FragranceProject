@@ -1,7 +1,7 @@
 // Typed browser-side wrappers around the app's own API routes, so
 // components don't hand-roll fetch URLs and error handling.
 
-import type { Candidate, Fragrance, SearchResponse } from "@/lib/schemas";
+import type { Candidate, CustomFragranceInput, Fragrance, SearchResponse } from "@/lib/schemas";
 import type {
   ProfilesRequest,
   ProfilesResponse,
@@ -35,6 +35,11 @@ export function fetchFragrancesByIds(ids: number[]): Promise<Fragrance[]> {
 /** One page of live search results (page is 0-based). */
 export function searchFragrances(query: string, page = 0): Promise<SearchResponse> {
   return request<SearchResponse>(`/api/search?q=${encodeURIComponent(query)}&page=${page}`);
+}
+
+/** Creates a user-defined fragrance (not on Fragrantica, or a personal blend). */
+export function createCustomFragrance(input: CustomFragranceInput): Promise<Fragrance> {
+  return postJSON<Fragrance>("/api/fragrance/custom", input);
 }
 
 /** Stores a search hit instantly (as a stub if new) - its details are fetched server-side in the background. */

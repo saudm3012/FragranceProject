@@ -1,10 +1,12 @@
 // Scores one combo (2-4 fragrances) per the framework:
 //   score = w_H*Harmony + w_S*Structure + w_I*Interest + w_C*Context - Penalties
-// with pairs and 3+ scent sets handled as the framework describes
-// (roles; Harmony and Interest averaged over pairs; Structure as a role
-// check; penalties tightening with size).
+// Pairs use the framework's pairwise terms directly. 3+ scents use roles:
+// an anchor, the modifier that best complements it, and accents - which
+// are judged against the anchor+modifier blend (the one scent field they
+// actually land on), not against each member separately.
 
 import { MOLECULES, strength, lateWeight, type FragranceProfile } from "@/lib/intelliscent/profile";
+import { blendOf, spraysFor } from "@/lib/intelliscent/engine/sprays";
 import {
   contextScore,
   harmonyPair,
@@ -17,17 +19,22 @@ import {
 import { pairKey, type EngineContext, type Penalty, type Role, type ScoredCombo } from "@/lib/intelliscent/engine/types";
 
 /**
- * How hard each rule bites. The framework says penalties should push a
- * combo out of the top results without making it impossible (ours - it
- * gives no numbers).
+ * How hard each rule bites. The threshold rules are graduated - barely
+ * over the line reads mildly off, far over reads unwearable - as
+ * `min + perUnit * (distance past the line)`, capped at `max`. The clash
+ * list is categorical (a curated or confirmed "no"), so it's flat and harsh.
  */
-export const PENALTY_AMOUNTS = {
-  sweetness: 0.15,
-  molecule: 0.12,
-  clash: 0.3,
-  strength: 0.15,
-  accent: 0.1,
+export const PENALTIES = {
+  sweetness: { min: 0.05, perUnit: 0.3, max: 0.3 }, // per unit of combined sweetness over the cap
+  molecule: { min: 0.06, perUnit: 0.24, max: 0.18 }, // per unit the weaker carrier sits above the carrying line
+  strength: { min: 0.05, perUnit: 0.1, max: 0.25 }, // per strength point past the mismatch threshold
+  accent: { min: 0.05, perUnit: 0.1, max: 0.2 }, // per strength point past the accent maximum
+  clash: 0.35,
 } as const;
+
+function graduated(rule: { min: number; perUnit: number; max: number }, over: number): number {
+  return Math.round(Math.min(rule.max, rule.min + rule.perUnit * Math.max(0, over)) * 1000) / 1000;
+}
 
 const MOLECULE_FLAG_MIN = 0.5; // flag intensity at which a scent "carries" a molecule
 // A combo "leans on" a pairing if it's among its top few Harmony cells. Relative
@@ -36,13 +43,20 @@ const MOLECULE_FLAG_MIN = 0.5; // flag intensity at which a scent "carries" a mo
 const LEANS_ON_TOP_CELLS = 3;
 
 /**
- * Anchor = the most base-heavy member (highest late weight). Of the rest,
- * the strongest is the primary modifier; any others are accents.
+ * Anchor = the most base-heavy member (highest late weight). The modifier
+ * is whichever remaining scent harmonizes best with the anchor - its job is
+ * to complement the anchor, which is a Harmony question, not a loudness
+ * contest. Any others are accents, best-harmonizing first.
  */
-export function assignRoles(members: FragranceProfile[]): { ordered: FragranceProfile[]; roles: Role[] } {
-  const byLate = [...members].sort((a, b) => lateWeight(b) - lateWeight(a) || b.longevity - a.longevity);
-  const [anchor, ...rest] = byLate;
-  const others = rest.sort((a, b) => strength(b) - strength(a));
+export function assignRoles(
+  members: FragranceProfile[],
+  ctx: EngineContext
+): { ordered: FragranceProfile[]; roles: Role[] } {
+  const [anchor, ...rest] = [...members].sort((a, b) => lateWeight(b) - lateWeight(a) || b.longevity - a.longevity);
+  const others = rest
+    .map((p) => ({ p, h: harmonyPair(anchor, p, ctx.matrix).value }))
+    .sort((a, b) => b.h - a.h)
+    .map((x) => x.p);
   const ordered = [anchor, ...others];
   return { ordered, roles: ordered.map((_, i): Role => (i === 0 ? "anchor" : i === 1 ? "modifier" : "accent")) };
 }
@@ -62,18 +76,20 @@ function penaltiesFor(
   if (totalSweet > sweetCap) {
     penalties.push({
       rule: "sweetness",
-      amount: PENALTY_AMOUNTS.sweetness,
+      amount: graduated(PENALTIES.sweetness, totalSweet - sweetCap),
       detail: `Combined sweetness ${totalSweet.toFixed(2)} is over the ${sweetCap.toFixed(2)} cap - likely cloying.`,
     });
   }
 
   for (const m of MOLECULES) {
     if (!s.moleculeFlags.includes(m.id)) continue;
-    const carriers = ordered.filter((p) => p.molecules[m.id] >= MOLECULE_FLAG_MIN);
+    const carriers = ordered
+      .filter((p) => p.molecules[m.id] >= MOLECULE_FLAG_MIN)
+      .sort((a, b) => b.molecules[m.id] - a.molecules[m.id]);
     if (carriers.length >= 2) {
       penalties.push({
         rule: "molecule",
-        amount: PENALTY_AMOUNTS.molecule,
+        amount: graduated(PENALTIES.molecule, carriers[1].molecules[m.id] - MOLECULE_FLAG_MIN),
         detail: `${carriers.map(nameOf).join(" and ")} both lean on ${m.label} - doubling it can smell harsh.`,
       });
     }
@@ -84,19 +100,19 @@ function penaltiesFor(
       if (ctx.clashPairs.has(pairKey(ordered[i].fragranceId, ordered[j].fragranceId))) {
         penalties.push({
           rule: "clash",
-          amount: PENALTY_AMOUNTS.clash,
+          amount: PENALTIES.clash,
           detail: `${nameOf(ordered[i])} and ${nameOf(ordered[j])} are on the clash list.`,
         });
       }
     }
   }
 
-  // Strength mismatch only between anchor and primary modifier - accents are meant to be weaker.
+  // Strength mismatch only between anchor and modifier - accents are meant to be weaker.
   const gap = Math.abs(strength(ordered[0]) - strength(ordered[1]));
   if (gap > s.strengthMismatchThreshold) {
     penalties.push({
       rule: "strength",
-      amount: PENALTY_AMOUNTS.strength,
+      amount: graduated(PENALTIES.strength, gap - s.strengthMismatchThreshold),
       detail: `Strength gap of ${gap.toFixed(1)} between ${nameOf(ordered[0])} and ${nameOf(ordered[1])} - the weaker one may disappear (the spray ratio compensates).`,
     });
   }
@@ -105,7 +121,7 @@ function penaltiesFor(
     if (strength(accent) > s.accentMaxStrength) {
       penalties.push({
         rule: "accent",
-        amount: PENALTY_AMOUNTS.accent,
+        amount: graduated(PENALTIES.accent, strength(accent) - s.accentMaxStrength),
         detail: `${nameOf(accent)} is too strong for an accent (${strength(accent).toFixed(1)} > ${s.accentMaxStrength}).`,
       });
     }
@@ -121,24 +137,26 @@ export function scoreCombo(
 ): ScoredCombo {
   if (members.length < 2) throw new Error("A combo needs at least 2 fragrances");
   const s = ctx.settings;
-  const { ordered, roles } = assignRoles(members);
+  const { ordered, roles } = assignRoles(members, ctx);
+  const [anchor, modifier, ...accents] = ordered;
 
-  const pairHarmonies: PairHarmony[] = [];
-  const interests: number[] = [];
-  for (let i = 0; i < ordered.length; i++) {
-    for (let j = i + 1; j < ordered.length; j++) {
-      pairHarmonies.push(harmonyPair(ordered[i], ordered[j], ctx.matrix));
-      interests.push(interestPair(ordered[i], ordered[j], s));
-    }
-  }
+  // The core pair, then each accent against the anchor+modifier blend.
+  const blend = blendOf([
+    { profile: anchor, sprays: spraysFor(anchor, "anchor", s) },
+    { profile: modifier, sprays: spraysFor(modifier, "modifier", s) },
+  ]);
+  const comparisons: Array<[FragranceProfile, FragranceProfile]> = [
+    [anchor, modifier],
+    ...accents.map((a): [FragranceProfile, FragranceProfile] => [blend, a]),
+  ];
+  const pairHarmonies: PairHarmony[] = comparisons.map(([a, b]) => harmonyPair(a, b, ctx.matrix));
+  const interests = comparisons.map(([a, b]) => interestPair(a, b, s));
   const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
   const harmony = mean(pairHarmonies.map((p) => p.value));
   const interest = mean(interests);
 
   const structure =
-    ordered.length === 2
-      ? { value: structurePair(ordered[0], ordered[1]), note: null }
-      : structureSet(ordered, s, nameOf);
+    ordered.length === 2 ? { value: structurePair(anchor, modifier), note: null } : structureSet(ordered, s, nameOf);
   const context = contextScore(ordered, s);
 
   // Weights are relative; context drops out (and the rest rescale) when no filter is set.
@@ -180,3 +198,4 @@ export function scoreCombo(
     strengths: ordered.map((p) => round(strength(p))),
   };
 }
+

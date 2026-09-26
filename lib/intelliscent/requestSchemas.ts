@@ -11,6 +11,7 @@ const EnginePayloadSchema = z.object({
   settings: Loose.default({}),
   personal: Loose.nullable().optional(),
   overrides: z.record(z.string(), Loose).optional(),
+  checkins: z.record(z.string(), Loose).optional(),
   clashPairs: z.array(z.tuple([z.number().int(), z.number().int()])).optional(),
 });
 
@@ -27,4 +28,5 @@ export const RateBodySchema = EnginePayloadSchema.extend({
 export const ProfilesBodySchema = z.object({
   ids: z.array(z.number().int()).max(500),
   overrides: z.record(z.string(), Loose).optional(),
+  checkins: z.record(z.string(), Loose).optional(),
 });
