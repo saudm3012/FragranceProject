@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import NavLinks from "@/app/components/NavLinks";
-import type { Fragrance } from "@/lib/schemas";
+import { isStub, type Fragrance } from "@/lib/schemas";
 import {
   getUsername,
   getCollection,
@@ -113,7 +113,10 @@ export default function CollectionPage() {
         >
           <div>
             <strong>{f.name}</strong>
-            <div className="muted">{f.brand}</div>
+            <div className="muted">
+              {f.brand}
+              {isStub(f) && " · details loading…"}
+            </div>
           </div>
           <button
             className="button"

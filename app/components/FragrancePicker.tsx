@@ -2,9 +2,10 @@
 
 import { useState } from "react";
 import FragranceChip from "@/app/components/FragranceChip";
+import Pager from "@/app/components/Pager";
 import { resolveFragrance, searchFragrances } from "@/lib/client/api";
 import * as fragranceCache from "@/lib/client/fragranceCache";
-import type { Candidate, Fragrance } from "@/lib/schemas";
+import type { Candidate, Fragrance, SearchResponse } from "@/lib/schemas";
 
 type Source = "collection" | "search";
 
@@ -29,26 +30,32 @@ export default function FragrancePicker({
 }) {
   const [source, setSource] = useState<Source>("collection");
   const [query, setQuery] = useState("");
-  const [candidates, setCandidates] = useState<Candidate[] | null>(null);
+  const [searchedFor, setSearchedFor] = useState("");
+  const [response, setResponse] = useState<SearchResponse | null>(null);
   const [searching, setSearching] = useState(false);
   const [resolvingUrl, setResolvingUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const candidates = response?.candidates ?? null;
   const collectionUrls = new Set(collection.map((f) => f.url));
   const available = collection.filter((f) => f.id != null && !excludeIds.has(f.id));
 
-  async function handleSearch(e: React.FormEvent) {
-    e.preventDefault();
-    if (!query.trim()) return;
+  async function runSearch(q: string, page: number) {
     setSearching(true);
     setError(null);
     try {
-      setCandidates(await searchFragrances(query.trim()));
+      setResponse(await searchFragrances(q, page));
+      setSearchedFor(q);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setSearching(false);
     }
+  }
+
+  function handleSearch(e: React.FormEvent) {
+    e.preventDefault();
+    if (query.trim()) void runSearch(query.trim(), 0);
   }
 
   async function handlePickCandidate(candidate: Candidate) {
@@ -125,6 +132,15 @@ export default function FragrancePicker({
               />
             ))}
           </div>
+          {response && (
+            <Pager
+              page={response.page}
+              totalPages={response.totalPages}
+              totalHits={response.totalHits}
+              onChange={(p) => void runSearch(searchedFor, p)}
+              disabled={searching}
+            />
+          )}
         </>
       )}
     </div>

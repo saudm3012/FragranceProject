@@ -4,7 +4,7 @@
 // useFragrances() in hooks.ts; this module just holds state and notifies.
 
 import { fetchFragrancesByIds } from "@/lib/client/api";
-import type { Fragrance } from "@/lib/schemas";
+import { isStub, type Fragrance } from "@/lib/schemas";
 
 const cache = new Map<number, Fragrance>();
 const pending = new Set<number>();
@@ -48,8 +48,26 @@ export function prime(fragrances: Fragrance[]): void {
 }
 
 /** Fetches any of `ids` not already cached or in flight. */
-export async function ensure(ids: number[]): Promise<void> {
-  const missing = [...new Set(ids)].filter((id) => !cache.has(id) && !pending.has(id));
+export function ensure(ids: number[]): Promise<void> {
+  return load([...new Set(ids)].filter((id) => !cache.has(id) && !pending.has(id)));
+}
+
+/** Re-fetches any of `ids` that are cached as stubs (quick-added, details still loading server-side). */
+export function refreshStubs(ids: number[]): Promise<void> {
+  return load(
+    [...new Set(ids)].filter((id) => {
+      const f = cache.get(id);
+      return f !== undefined && isStub(f) && !pending.has(id);
+    })
+  );
+}
+
+export function isCachedStub(id: number): boolean {
+  const f = cache.get(id);
+  return f !== undefined && isStub(f);
+}
+
+async function load(missing: number[]): Promise<void> {
   if (missing.length === 0) return;
 
   missing.forEach((id) => pending.add(id));

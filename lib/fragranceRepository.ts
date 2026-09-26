@@ -72,6 +72,35 @@ export async function getByIds(ids: number[]): Promise<Fragrance[]> {
   return result.rows.map((r) => rowToFragrance(r as unknown as FragranceRow));
 }
 
+/** url -> id for whichever of `urls` are already stored. */
+export async function getIdsByUrls(urls: string[]): Promise<Map<string, number>> {
+  if (urls.length === 0) return new Map();
+  const db = getDb();
+  const result = await db.execute({
+    sql: `SELECT id, url FROM fragrances WHERE url IN (${urls.map(() => "?").join(",")})`,
+    args: urls,
+  });
+  return new Map(result.rows.map((r) => [r.url as string, r.id as number]));
+}
+
+/**
+ * Stores a stub (see isStub in schemas.ts) for a fragrance that isn't
+ * stored yet, and returns the row - an existing full record is left
+ * untouched and returned as-is.
+ */
+export async function insertStub(candidate: { name: string; brand: string; url: string }): Promise<Fragrance> {
+  const db = getDb();
+  await db.execute({
+    sql: `
+      INSERT INTO fragrances (name, brand, url, notes_top, notes_middle, notes_base, accords, scraped_at)
+      VALUES (?, ?, ?, '[]', '[]', '[]', '[]', '')
+      ON CONFLICT(url) DO NOTHING
+    `,
+    args: [candidate.name, candidate.brand, candidate.url],
+  });
+  return (await getByUrl(candidate.url))!;
+}
+
 /** Every fragrance's id/name/brand - the pool fuzzy name search runs over. */
 export async function listNameIndex(): Promise<Array<{ id: number; name: string; brand: string }>> {
   const db = getDb();

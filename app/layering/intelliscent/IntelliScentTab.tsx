@@ -9,7 +9,7 @@ import SuggestionsPanel from "@/app/layering/intelliscent/SuggestionsPanel";
 import type { LayeringTabProps } from "@/app/layering/types";
 import { useEnginePayload, useFragrances } from "@/lib/client/hooks";
 import { SETTINGS_GROUPS } from "@/lib/intelliscent/settings";
-import type { Fragrance } from "@/lib/schemas";
+import { isStub, type Fragrance } from "@/lib/schemas";
 
 export default function IntelliScentTab({ username, collectionIds, goToTab }: LayeringTabProps) {
   const { payload, settings, setSettings, prefs, setPrefs, personal } = useEnginePayload(username);
@@ -93,7 +93,16 @@ export default function IntelliScentTab({ username, collectionIds, goToTab }: La
         </>
       )}
 
-      {selected?.id != null && (
+      {selected?.id != null && isStub(selected) && (
+        <div ref={sheetRef} className="action-sheet">
+          <p className="muted">
+            <strong>{selected.name}</strong> was just added - its details are still loading. It&apos;ll be ready to layer in
+            a few seconds.
+          </p>
+        </div>
+      )}
+
+      {selected?.id != null && !isStub(selected) && (
         <div ref={sheetRef} className="action-sheet">
           <p>
             Build around <strong>{selected.name}</strong>:
@@ -115,7 +124,7 @@ export default function IntelliScentTab({ username, collectionIds, goToTab }: La
         </div>
       )}
 
-      {selected?.id != null && action && (
+      {selected?.id != null && !isStub(selected) && action && (
         <action.Panel
           key={`${selected.id}:${action.id}`}
           base={{ ...selected, id: selected.id }}

@@ -25,12 +25,20 @@ import type {
   SuggestRequest,
   SuggestResponse,
 } from "@/lib/intelliscent/types";
-import type { Fragrance } from "@/lib/schemas";
+import { isStub, type Fragrance } from "@/lib/schemas";
 
 export class IntelliScentInputError extends Error {
   constructor(message: string, public status = 400) {
     super(message);
   }
+}
+
+/** Quick-added fragrances are stubs until their details arrive - scoring them would treat them as scentless. */
+function stillLoading(stubs: Fragrance[]): IntelliScentInputError {
+  return new IntelliScentInputError(
+    `Details for ${stubs.map((f) => f.name).join(", ")} are still loading - try again in a few seconds.`,
+    409
+  );
 }
 
 const DEFAULT_LIMIT = 15;
@@ -98,6 +106,7 @@ export async function suggest(input: SuggestRequest): Promise<SuggestResponse> {
   if (input.baseId != null) {
     const found = await fragranceRepository.getById(input.baseId);
     if (!found || found.id == null) throw new IntelliScentInputError(`Fragrance ${input.baseId} not found`, 404);
+    if (isStub(found)) throw stillLoading([found]);
     base = found as StoredFragrance;
   }
 
@@ -148,6 +157,8 @@ export async function rate(input: RateRequest): Promise<RateResponse> {
     const found = new Set(fragrances.map((f) => f.id));
     throw new IntelliScentInputError(`Fragrance(s) not found: ${ids.filter((id) => !found.has(id)).join(", ")}`, 404);
   }
+  const stubs = fragrances.filter(isStub);
+  if (stubs.length > 0) throw stillLoading(stubs);
 
   const ctx = engineContext(input, fragrances);
   const profiles = new Map(fragrances.map((f) => [f.id, effective(f, input.overrides)]));

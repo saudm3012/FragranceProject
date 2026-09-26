@@ -897,3 +897,81 @@ details.settings-group > summary {
 .combo-card-actions .toggle-row {
   margin-right: auto;
 }
+
+/* Find Fragrance: expandable result rows (app/find/page.tsx) */
+
+.result-row {
+  padding: 0;
+}
+
+.result-row-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.result-row-main {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  flex: 1;
+  min-width: 0;
+  padding: 0.85rem 1rem;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 8px;
+}
+
+.result-row-main:hover {
+  background: rgba(128, 128, 128, 0.08);
+}
+
+.result-row-main strong {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.result-row-brand {
+  display: block;
+  font-size: 0.9rem;
+}
+
+.result-row-chevron {
+  width: 1rem;
+  flex-shrink: 0;
+  opacity: 0.6;
+}
+
+.result-row-actions {
+  flex-shrink: 0;
+  padding-right: 1rem;
+}
+
+.result-row .error {
+  padding: 0 1rem;
+}
+
+.result-row-details {
+  padding: 0 1rem 1rem 2.5rem;
+  border-top: 1px solid rgba(128, 128, 128, 0.15);
+  padding-top: 0.75rem;
+}
+
+/* Search paging (Pager.tsx) */
+
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin: 1rem 0;
+}
+
+.results-section {
+  scroll-margin-top: 1rem;
+}

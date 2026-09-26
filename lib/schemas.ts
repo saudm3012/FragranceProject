@@ -34,19 +34,32 @@ export const FragranceSchema = z.object({
   perfumer: z.string().nullable(),
   description: z.string().nullable(),
   imageUrl: z.string().nullable(),
-  scrapedAt: z.string(), // ISO8601
+  scrapedAt: z.string(), // ISO8601 when details were scraped, or "" for a stub (see isStub)
 });
 export type Fragrance = z.infer<typeof FragranceSchema>;
+
+/**
+ * A stub is a placeholder row (name, brand, url only) created by "quick
+ * add" so a fragrance can join a collection before its page has been
+ * fetched. Its details are filled in by a background fetch.
+ */
+export function isStub(f: Pick<Fragrance, "scrapedAt">): boolean {
+  return f.scrapedAt === "";
+}
 
 export const CandidateSchema = z.object({
   name: z.string(),
   brand: z.string(),
   url: z.string().url(),
+  id: z.number().int().nullable().optional(), // set when this fragrance is already stored
 });
 export type Candidate = z.infer<typeof CandidateSchema>;
 
 export const SearchResponseSchema = z.object({
   source: z.enum(["cache", "live_search"]),
   candidates: z.array(CandidateSchema),
+  page: z.number().int(), // 0-based
+  totalPages: z.number().int(),
+  totalHits: z.number().int(),
 });
 export type SearchResponse = z.infer<typeof SearchResponseSchema>;

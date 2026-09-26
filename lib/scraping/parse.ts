@@ -22,9 +22,8 @@
 //     placeholders like <seasons-rating-new>. fetchPage() waits for them;
 //     parseVotes() reads them. Low-vote fragrances may still come back with
 //     no votes - those fields are legitimately null, not a parsing bug.
-//   - Fragrantica uses no stable "rating value" class we could confirm live;
-//     that extraction is regex-based best-effort over whatever text is
-//     present and may need revisiting against a page with an actual rating.
+//   - The rating comes from schema.org microdata (itemprop ratingValue /
+//     ratingCount), not from the visible "Rating" card - see parseRating().
 
 import * as cheerio from "cheerio";
 import type { AnyNode } from "domhandler";
@@ -202,22 +201,21 @@ function parsePerfumer(description: string | null): string | null {
   return fallback ? fallback[1].trim() : null;
 }
 
-function parseRatingCard($: cheerio.CheerioAPI, labelText: RegExp): string | null {
-  const label = $(".tw-rating-card-label").filter((_, el) => labelText.test($(el).text()));
-  const card = label.first().closest(".tw-rating-card");
-  const bodyText = card.find(".p-2").first().text().trim();
-  return bodyText.length > 0 ? bodyText : null;
-}
-
+/**
+ * Rating from the page's schema.org microdata (itemprop ratingValue /
+ * ratingCount, e.g. "3.85" from "34,333" votes). Not the "Rating" card -
+ * that's a love/like/ok/dislike/hate vote breakdown, and reading digits out
+ * of it produced nonsense like 1.00 (the "1" of "13.2k").
+ */
 function parseRating($: cheerio.CheerioAPI): { rating: number | null; ratingCount: number | null } {
-  const raw = parseRatingCard($, /^rating$/i);
-  if (!raw) return { rating: null, ratingCount: null };
-  const ratingMatch = raw.match(/(\d(?:\.\d+)?)/);
-  const countMatch = raw.match(/([\d,]+)\s*(votes|ratings)/i);
-  return {
-    rating: ratingMatch ? parseFloat(ratingMatch[1]) : null,
-    ratingCount: countMatch ? parseInt(countMatch[1].replace(/,/g, ""), 10) : null,
+  const read = (prop: string) => {
+    const el = $(`[itemprop=${prop}]`).first();
+    const raw = (el.attr("content") ?? el.text()).replace(/,/g, "").trim();
+    const n = parseFloat(raw);
+    return Number.isFinite(n) ? n : null;
   };
+  const count = read("ratingCount");
+  return { rating: read("ratingValue"), ratingCount: count === null ? null : Math.round(count) };
 }
 
 export function parseFragrancePage(html: string, url: string): Omit<Fragrance, "id"> {

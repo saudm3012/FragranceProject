@@ -1,68 +1,49 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useRef, useState } from "react";
+import InCollectionIcon from "@/app/components/InCollectionIcon";
 import NavLinks from "@/app/components/NavLinks";
-import type { Candidate, Fragrance } from "@/lib/schemas";
-import { addToCollection, getUsername, USERNAME_CHANGED_EVENT } from "@/lib/client/localCollection";
-
-type Status = "idle" | "searching" | "loading-detail";
+import Pager from "@/app/components/Pager";
+import { quickAdd, resolveFragrance, searchFragrances } from "@/lib/client/api";
+import * as fragranceCache from "@/lib/client/fragranceCache";
+import { useCollectionIds, useFragrances, useUsername } from "@/lib/client/hooks";
+import { addToCollection } from "@/lib/client/localCollection";
+import { isStub, type Candidate, type Fragrance, type SearchResponse } from "@/lib/schemas";
 
 export default function FindFragrancePage() {
   const [query, setQuery] = useState("");
-  const [candidates, setCandidates] = useState<Candidate[] | null>(null);
-  const [fragrance, setFragrance] = useState<Fragrance | null>(null);
-  const [status, setStatus] = useState<Status>("idle");
+  const [searchedFor, setSearchedFor] = useState(""); // the query the shown results belong to (the input may have changed since)
+  const [response, setResponse] = useState<SearchResponse | null>(null);
+  const [searchCount, setSearchCount] = useState(0); // keys result rows, so each new search/page starts collapsed
+  const [searching, setSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [added, setAdded] = useState(false);
-  const [username, setUsernameState] = useState<string | null>(null);
+  const resultsRef = useRef<HTMLDivElement>(null);
+  const username = useUsername();
+  const collectionIdList = useCollectionIds(username);
+  const collectionIds = new Set(collectionIdList);
 
-  useEffect(() => {
-    const load = () => setUsernameState(getUsername());
-    load();
-    window.addEventListener(USERNAME_CHANGED_EVENT, load);
-    return () => window.removeEventListener(USERNAME_CHANGED_EVENT, load);
-  }, []);
+  async function runSearch(q: string, page: number) {
+    setSearching(true);
+    setError(null);
+    try {
+      setResponse(await searchFragrances(q, page));
+      setSearchedFor(q);
+      setSearchCount((n) => n + 1);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSearching(false);
+    }
+  }
 
-  async function handleSearch(e: React.FormEvent) {
+  function handleSearch(e: React.FormEvent) {
     e.preventDefault();
-    if (!query.trim()) return;
-    setStatus("searching");
-    setError(null);
-    setFragrance(null);
-    setAdded(false);
-    try {
-      const res = await fetch(`/api/search?q=${encodeURIComponent(query.trim())}`);
-      if (!res.ok) throw new Error(`Search failed (${res.status})`);
-      const data = await res.json();
-      setCandidates(data.candidates);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setStatus("idle");
-    }
+    if (query.trim()) void runSearch(query.trim(), 0);
   }
 
-  async function handlePickCandidate(candidate: Candidate) {
-    setStatus("loading-detail");
-    setError(null);
-    setAdded(false);
-    try {
-      const res = await fetch(`/api/fragrance?url=${encodeURIComponent(candidate.url)}`);
-      if (!res.ok) throw new Error(`Lookup failed (${res.status})`);
-      const data = await res.json();
-      setFragrance(data);
-      setCandidates(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setStatus("idle");
-    }
-  }
-
-  function handleAddToCollection() {
-    if (!fragrance?.id || !username) return;
-    addToCollection(username, fragrance.id);
-    setAdded(true);
+  async function goToPage(page: number) {
+    await runSearch(searchedFor, page);
+    resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   return (
@@ -78,58 +59,151 @@ export default function FindFragrancePage() {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
-        <button className="button button-primary" type="submit" disabled={status === "searching"}>
+        <button className="button button-primary" type="submit" disabled={searching}>
           Search
         </button>
       </form>
 
-      {status === "searching" && <p className="spinner-text">Searching…</p>}
-      {status === "loading-detail" && <p className="spinner-text">Loading fragrance details…</p>}
+      {searching && <p className="spinner-text">Searching…</p>}
       {error && <p className="error">{error}</p>}
+      {username === null && <p className="muted">Set a username above to save fragrances to a collection.</p>}
 
-      {candidates && candidates.length === 0 && <p className="muted">No matches found.</p>}
-
-      {candidates && candidates.length > 0 && (
-        <div>
-          <h2>Results</h2>
-          {candidates.map((c) => (
-            <div key={c.url} className="card card-list-item" onClick={() => handlePickCandidate(c)}>
-              <div>
-                <strong>{c.name}</strong>
-                <div className="muted">{c.brand}</div>
-              </div>
-            </div>
-          ))}
-        </div>
+      {response && response.source === "cache" && (
+        <p className="muted">Fragrantica&apos;s search is unreachable right now - showing saved matches only.</p>
       )}
+      {response && response.candidates.length === 0 && <p className="muted">No matches found.</p>}
 
-      {fragrance && (
-        <FragranceDetail fragrance={fragrance} added={added} onAdd={handleAddToCollection} hasUsername={!!username} />
+      {response && response.candidates.length > 0 && (
+        <div ref={resultsRef} className="results-section">
+          <h2>Results</h2>
+          {response.candidates.map((c) => (
+            <ResultRow key={`${searchCount}|${c.url}`} candidate={c} username={username ?? null} collectionIds={collectionIds} />
+          ))}
+          <Pager
+            page={response.page}
+            totalPages={response.totalPages}
+            totalHits={response.totalHits}
+            onChange={goToPage}
+            disabled={searching}
+          />
+        </div>
       )}
     </div>
   );
 }
 
-function FragranceDetail({
-  fragrance,
-  added,
-  onAdd,
-  hasUsername,
+/**
+ * One search result: expands in place to show details (other results stay
+ * visible), and can be added to the collection straight away - new
+ * fragrances are stored as a stub and their details load in the background.
+ */
+function ResultRow({
+  candidate,
+  username,
+  collectionIds,
 }: {
-  fragrance: Fragrance;
-  added: boolean;
-  onAdd: () => void;
-  hasUsername: boolean;
+  candidate: Candidate;
+  username: string | null;
+  collectionIds: ReadonlySet<number>;
 }) {
+  const [learnedId, setLearnedId] = useState<number | null>(null);
+  const [expanded, setExpanded] = useState(false);
+  const [loadingDetails, setLoadingDetails] = useState(false);
+  const [adding, setAdding] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const id = candidate.id ?? learnedId;
+  const { get } = useFragrances(id != null ? [id] : []);
+  const stored = id != null ? get(id) : undefined;
+  const details = stored && !isStub(stored) ? stored : null;
+  const inCollection = id != null && collectionIds.has(id);
+
+  async function toggle() {
+    const next = !expanded;
+    setExpanded(next);
+    if (!next || details || loadingDetails) return;
+    setLoadingDetails(true);
+    setError(null);
+    try {
+      const f = await resolveFragrance(candidate.url);
+      fragranceCache.prime([f]);
+      if (f.id != null) setLearnedId(f.id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoadingDetails(false);
+    }
+  }
+
+  async function handleAdd() {
+    if (!username) return;
+    setAdding(true);
+    setError(null);
+    try {
+      // Already stored (even as a stub)? Adding is purely local - no request needed.
+      let fragranceId = id;
+      if (fragranceId == null) {
+        const f = await quickAdd(candidate);
+        fragranceCache.prime([f]);
+        fragranceId = f.id ?? null;
+        setLearnedId(fragranceId);
+      }
+      if (fragranceId != null) addToCollection(username, fragranceId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setAdding(false);
+    }
+  }
+
   return (
-    <div className="card">
+    <div className={expanded ? "card result-row is-expanded" : "card result-row"}>
+      <div className="result-row-header">
+        <button type="button" className="result-row-main" onClick={toggle} aria-expanded={expanded}>
+          <span className="result-row-chevron" aria-hidden="true">
+            {expanded ? "▾" : "▸"}
+          </span>
+          <span>
+            <strong>
+              {candidate.name}
+              {inCollection && <InCollectionIcon />}
+            </strong>
+            <span className="muted result-row-brand">{candidate.brand}</span>
+          </span>
+        </button>
+        <div className="result-row-actions">
+          {inCollection ? (
+            <span className="muted small">{stored && isStub(stored) ? "Added · loading details…" : "In collection"}</span>
+          ) : (
+            <button type="button" className="button" onClick={handleAdd} disabled={!username || adding}>
+              {adding ? "Adding…" : "+ Add"}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {error && <p className="error">{error}</p>}
+
+      {expanded && (
+        <div className="result-row-details">
+          {details ? (
+            <FragranceDetail fragrance={details} />
+          ) : (
+            <p className="spinner-text">Loading details… (the first look at a fragrance takes a few seconds)</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function FragranceDetail({ fragrance }: { fragrance: Fragrance }) {
+  return (
+    <div>
       {fragrance.imageUrl && (
         // eslint-disable-next-line @next/next/no-img-element
         <img className="detail-image" src={fragrance.imageUrl} alt={fragrance.name} />
       )}
-      <h2>{fragrance.name}</h2>
-      <p className="muted">{fragrance.brand}</p>
-
       {fragrance.rating != null && (
         <p>
           Rating: {fragrance.rating.toFixed(2)}
@@ -168,13 +242,6 @@ function FragranceDetail({
       )}
 
       {fragrance.description && <p className="muted">{fragrance.description}</p>}
-
-      <div style={{ marginTop: "1rem" }}>
-        <button className="button button-primary" onClick={onAdd} disabled={added || !hasUsername}>
-          {added ? "Added to Collection" : "Add to Collection"}
-        </button>
-        {!hasUsername && <p className="muted">Set a username above to save fragrances.</p>}
-      </div>
     </div>
   );
 }

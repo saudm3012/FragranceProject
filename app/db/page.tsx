@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import NavLinks from "@/app/components/NavLinks";
-import type { Fragrance } from "@/lib/schemas";
+import { isStub, type Fragrance } from "@/lib/schemas";
 
 type SortKey = "name" | "brand" | "rating" | "ratingCount" | "scrapedAt";
 type SortDir = "asc" | "desc";
@@ -108,7 +108,7 @@ export default function DbBrowsePage() {
                   <td style={tdStyle}>{f.ratingCount ?? "—"}</td>
                   <td style={tdStyle}>{f.accords[0]?.name ?? "—"}</td>
                   <td style={tdStyle}>{f.perfumer ?? "—"}</td>
-                  <td style={tdStyle}>{new Date(f.scrapedAt).toLocaleString()}</td>
+                  <td style={tdStyle}>{isStub(f) ? "details loading…" : new Date(f.scrapedAt).toLocaleString()}</td>
                 </tr>
               ))}
             </tbody>

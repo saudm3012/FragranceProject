@@ -154,10 +154,13 @@ export function useEnginePayload(username: string | null | undefined): {
   return { payload, settings, setSettings: updateSettings, prefs, setPrefs: updatePrefs, personal };
 }
 
+const STUB_POLL_MS = 4_000;
+
 /**
  * Full Fragrance records for `ids`, fetched on demand and shared across all
  * components via the fragrance cache. `get` returns undefined for ids still
  * loading or not found; `loading` is true while any requested id is unsettled.
+ * Quick-added stubs are re-checked every few seconds until their details land.
  */
 export function useFragrances(ids: number[]): {
   get: (id: number) => Fragrance | undefined;
@@ -168,6 +171,14 @@ export function useFragrances(ids: number[]): {
     if (key) void fragranceCache.ensure(key.split(",").map(Number));
   }, [key]);
   useSyncExternalStore(fragranceCache.subscribe, fragranceCache.getVersion, () => 0);
+
+  const hasStub = ids.some(fragranceCache.isCachedStub);
+  useEffect(() => {
+    if (!hasStub || !key) return;
+    const timer = setInterval(() => void fragranceCache.refreshStubs(key.split(",").map(Number)), STUB_POLL_MS);
+    return () => clearInterval(timer);
+  }, [hasStub, key]);
+
   return {
     get: fragranceCache.getCached,
     loading: ids.some((id) => !fragranceCache.hasSettled(id)),

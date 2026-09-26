@@ -114,7 +114,19 @@ interface AlgoliaHit {
   slug: string; // e.g. "Creed/Aventus" -> maps to /perfume/{slug}-{id}.html
 }
 
-async function queryAlgolia(credentials: AlgoliaCredentials, query: string, limit: number) {
+interface AlgoliaResult {
+  hits: AlgoliaHit[];
+  nbHits: number;
+  nbPages: number;
+  page: number;
+}
+
+async function queryAlgolia(
+  credentials: AlgoliaCredentials,
+  query: string,
+  limit: number,
+  page: number
+): Promise<AlgoliaResult> {
   const host = `${credentials.appId.toLowerCase()}-dsn.algolia.net`;
   const res = await fetch(`https://${host}/1/indexes/*/queries`, {
     method: "POST",
@@ -128,7 +140,7 @@ async function queryAlgolia(credentials: AlgoliaCredentials, query: string, limi
         {
           indexName: "fragrantica_perfumes",
           query,
-          params: `hitsPerPage=${limit}`,
+          params: `hitsPerPage=${limit}&page=${page}`,
         },
       ],
     }),
@@ -136,28 +148,40 @@ async function queryAlgolia(credentials: AlgoliaCredentials, query: string, limi
   if (!res.ok) {
     throw new Error(`Algolia search failed: ${res.status} ${await res.text()}`);
   }
-  const body = (await res.json()) as { results: Array<{ hits: AlgoliaHit[] }> };
-  return body.results[0]?.hits ?? [];
+  const body = (await res.json()) as { results: AlgoliaResult[] };
+  return body.results[0] ?? { hits: [], nbHits: 0, nbPages: 0, page };
 }
 
-/** Searches Fragrantica's live Algolia index for a fragrance name. */
-export async function searchLive(query: string, limit = 10): Promise<Candidate[]> {
+export interface LiveSearchPage {
+  candidates: Candidate[];
+  page: number; // 0-based
+  totalPages: number;
+  totalHits: number;
+}
+
+/** Searches Fragrantica's live Algolia index for a fragrance name, one page at a time (page is 0-based). */
+export async function searchLive(query: string, limit = 10, page = 0): Promise<LiveSearchPage> {
   let credentials = await getCredentials();
-  let hits: AlgoliaHit[];
+  let result: AlgoliaResult;
   try {
-    hits = await queryAlgolia(credentials, query, limit);
+    result = await queryAlgolia(credentials, query, limit, page);
   } catch {
     // Credentials may have been rejected (expired early, revoked) - force a
     // fresh extraction once (bypassing both caches, since Turso would just
     // hand back the same rejected key) and retry before giving up.
     cached = null;
     credentials = await getCredentials(true);
-    hits = await queryAlgolia(credentials, query, limit);
+    result = await queryAlgolia(credentials, query, limit, page);
   }
 
-  return hits.map((hit) => ({
-    name: hit.naslov,
-    brand: hit.dizajner,
-    url: `https://www.fragrantica.com/perfume/${hit.slug}-${hit.id}.html`,
-  }));
+  return {
+    candidates: result.hits.map((hit) => ({
+      name: hit.naslov,
+      brand: hit.dizajner,
+      url: `https://www.fragrantica.com/perfume/${hit.slug}-${hit.id}.html`,
+    })),
+    page: result.page,
+    totalPages: result.nbPages,
+    totalHits: result.nbHits,
+  };
 }

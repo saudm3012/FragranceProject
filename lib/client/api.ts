@@ -32,9 +32,14 @@ export function fetchFragrancesByIds(ids: number[]): Promise<Fragrance[]> {
   return request<Fragrance[]>(`/api/fragrances?ids=${ids.join(",")}`);
 }
 
-export async function searchFragrances(query: string): Promise<Candidate[]> {
-  const data = await request<SearchResponse>(`/api/search?q=${encodeURIComponent(query)}`);
-  return data.candidates;
+/** One page of live search results (page is 0-based). */
+export function searchFragrances(query: string, page = 0): Promise<SearchResponse> {
+  return request<SearchResponse>(`/api/search?q=${encodeURIComponent(query)}&page=${page}`);
+}
+
+/** Stores a search hit instantly (as a stub if new) - its details are fetched server-side in the background. */
+export function quickAdd(candidate: Candidate): Promise<Fragrance> {
+  return postJSON<Fragrance>("/api/fragrance/quick-add", candidate);
 }
 
 /** Resolves a search candidate to a full, stored Fragrance (fetches and caches it server-side if new - can take several seconds). */
